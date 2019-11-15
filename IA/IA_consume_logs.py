@@ -59,14 +59,11 @@ def make_json_api_request(url,token):
         try:
             response = requests.get(url, headers=auth_header)
             if response.status_code == 429:
-                keep_trying = retry
+                keep_trying = True
                 response_headers = response.headers
                 wait_time = response_headers['Retry-After']
-                if keep_trying:
-                    logging.log(logging.INFO, 'Throttled: retrying in {wait_time}s')
-                    time.sleep(int(wait_time))
-                else:
-                    logging.log(logging.ERROR, 'Throttled. Please retry after {wait_time}s')
+                logging.log(logging.INFO, 'Throttled: retrying in {wait_time}s')
+                time.sleep(int(wait_time))
             elif response.status_code >= 400:
                 status_code = response.status_code
                 content = getattr(response, 'content', None)
@@ -80,12 +77,8 @@ def make_json_api_request(url,token):
     except json.decoder.JSONDecodeError:
         return None
 
-def main(default_args=True):
+def main():
     # Arg Parsing
-    if (default_args):
-        args = parser.parse_args(['--guid', 'default', '--directory', 'default'])
-    else:
-        args = parser.parse_args()
     args = parser.parse_args()
     guid = args.guid
     directory = args.directory
@@ -117,7 +110,10 @@ def create_logs(guid, directory, pagesize, bearer_token, base_url=None, logs_url
     if not os.path.exists(path):
         os.mkdir(path)
     path = os.path.join(path,'logs')
-    os.mkdir(path)
+    try:
+        os.mkdir(path)
+    except FileExistsError:
+        pass
 
     # Retrieving page 1
     url = base_url + logs_url.format(guid, pagesize)
@@ -136,4 +132,4 @@ def create_logs(guid, directory, pagesize, bearer_token, base_url=None, logs_url
 
 if __name__ == '__main__':
 
-    main(default_args=False)
+    main()
