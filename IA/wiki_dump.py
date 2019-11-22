@@ -1,11 +1,9 @@
 import os
 import math
 import asyncio
-import requests
 import argparse
-from ratelimit import sleep_and_retry
-from ratelimit.exception import RateLimitException
 from settings import OSF_API_URL
+from IA.utils import get_with_retry
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -14,26 +12,15 @@ class WikiDumpError(Exception):
     pass
 
 
-@sleep_and_retry
-def get_and_retry_on_429(url):
-    resp = requests.get(url)
-    if resp.status_code == 429:
-        raise RateLimitException(
-            message='Too many requests, sleeping.',
-            period_remaining=int(resp.headers['Retry-After'])
-        )  # This will be caught by @sleep_and_retry and retried
-    return resp
-
-
 async def get_wiki_pages(guid, page, result={}):
     url = f'{OSF_API_URL}v2/registrations/{guid}/wikis/?page={page}'
-    resp = get_and_retry_on_429(url)
+    resp = get_with_retry(url, retry_on=(429,))
     result[page] = resp.json()['data']
     return result
 
 
 async def write_wiki_content(page):
-    resp = get_and_retry_on_429(page['links']['download'])
+    resp = get_with_retry(page['links']['download'], retry_on=(429,))
 
     with open(os.path.join(HERE, f'/{page["attributes"]["name"]}.md'), 'wb') as fp:
         fp.write(resp.content)
@@ -54,7 +41,7 @@ async def main(guid):
     url = f'{OSF_API_URL}v2/registrations/{guid}/wikis/?page=1'
     tasks = []
 
-    data = get_and_retry_on_429(url).json()
+    data = get_with_retry(url, retry_on=(429,)).json()
     result = {1: data['data']}
 
     if data['links']['next'] is not None:
