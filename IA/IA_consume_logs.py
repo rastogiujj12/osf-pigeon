@@ -2,38 +2,14 @@ import os
 import argparse
 import json
 import logging
-import time
 import requests
 import settings
+from IA.utils import get_with_retry
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    '-g',
-    '--guid',
-    help='This is the GUID of the target node on the OSF'
-)
-parser.add_argument(
-    '-d',
-    '--directory',
-    help='This is the target Directory for the project and its files'
-)
-
-parser.add_argument(
-    '-p',
-    '--pagesize',
-    help='How many logs should appear per file? Default is 100'
-)
-
-parser.add_argument(
-    '-t',
-    '--token',
-    help='Auth token for osf. This is required.'
-)
 
 
 def json_with_pagination(path, guid, page, url, token):
@@ -50,74 +26,31 @@ def json_with_pagination(path, guid, page, url, token):
 
 
 def make_json_api_request(url, token):
-    auth_header = {'Authorizataion': f'Bearer {token}'}
-    keep_trying = True
-    response = None
+    auth_header = {'Authorization': f'Bearer {token}'}
+    response = get_with_retry(url, retry_on=(429,), headers=auth_header)
+    if response.status_code >= 400:
+        status_code = response.status_code
+        content = getattr(response, 'content', None)
+        raise requests.exceptions.HTTPError('Status code {}. {}'.format(status_code, content))
 
-    while keep_trying:
-        keep_trying = False
-        try:
-            response = requests.get(url, headers=auth_header)
-            if response.status_code == 429:
-                keep_trying = True
-                response_headers = response.headers
-                wait_time = response_headers['Retry-After']
-                logging.log(logging.INFO, 'Throttled: retrying in {wait_time}s')
-                time.sleep(int(wait_time))
-            elif response.status_code >= 400:
-                status_code = response.status_code
-                content = getattr(response, 'content', None)
-                raise requests.exceptions.HTTPError(
-                    'Status code {}. {}'.format(status_code, content))
-        except requests.exceptions.RequestException as e:
-            logging.log(logging.ERROR, 'HTTP Request failed: {}'.format(e))
-            raise
-    try:
-        return response.json()
-    except json.decoder.JSONDecodeError:
-        return None
+    return response.json()
 
 
-def main():
-    # Arg Parsing
-    args = parser.parse_args()
-    guid = args.guid
-    directory = args.directory
-    pagesize = args.pagesize
-    bearer_token = args.token
-
-    # Args handling
-    if not guid:
-        raise ValueError('Project GUID must be specified! Use -g')
-    if not bearer_token:
-        raise ValueError('Token must be specified! Use -t')
-    if not directory:
-        # Setting default to current directory
-        directory = '.'
-    if not pagesize:
-        pagesize = 100
-
-    create_logs(guid, directory, pagesize, bearer_token)
-
-
-def create_logs(guid, directory, pagesize, bearer_token, base_url=None, logs_url=None):
-    if not base_url:
-        base_url = settings.OSF_API_URL
-    if not logs_url:
-        logs_url = settings.OSF_LOGS_URL
-
+def create_logs(guid, directory, pagesize, bearer_token):
     # Creating directories
     path = os.path.join(HERE, directory, guid)
     if not os.path.exists(path):
         os.mkdir(path)
+
     path = os.path.join(path, 'logs')
+
     try:
         os.mkdir(path)
     except FileExistsError:
         pass
 
     # Retrieving page 1
-    url = base_url + logs_url.format(guid, pagesize)
+    url = settings.OSF_API_URL + settings.OSF_LOGS_URL.format(guid, pagesize)
     response = json_with_pagination(path, guid, 1, url, bearer_token)
     page_num = 2
 
@@ -131,4 +64,34 @@ def create_logs(guid, directory, pagesize, bearer_token, base_url=None, logs_url
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-g',
+        '--guid',
+        help='This is the GUID of the target node on the OSF',
+        required=True
+    )
+    parser.add_argument(
+        '-t',
+        '--token',
+        help='Auth token for osf. This is required.',
+        required=True
+    )
+    parser.add_argument(
+        '-d',
+        '--directory',
+        help='This is the target Directory for the project and its files',
+        default='.'
+    )
+    parser.add_argument(
+        '-p',
+        '--pagesize',
+        help='How many logs should appear per file? Default is 100'
+    )
+    args = parser.parse_args()
+    guid = args.guid
+    directory = args.directory
+    pagesize = args.pagesize
+    bearer_token = args.token
+
+    create_logs(guid, directory, pagesize, bearer_token)

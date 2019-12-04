@@ -37,7 +37,7 @@ class TestIALogs(unittest.TestCase):
         )
 
         with mock.patch('builtins.open', mock.mock_open()) as m:
-            create_logs('njs82', 'tests', 100, 'asdfasdfasdgfasg', settings.OSF_API_URL)
+            create_logs('njs82', 'tests', 100, 'asdfasdfasdgfasg')
             m.assert_called_with(os.path.join(HERE, 'njs82/logs/njs82-1.json'), 'w')
             mock_mkdir.assert_called_with(os.path.join(HERE, 'njs82/logs'))
 
@@ -69,7 +69,7 @@ class TestIALogs(unittest.TestCase):
         )
 
         with mock.patch('builtins.open', mock.mock_open()) as m:
-            create_logs('8jpzs', 'tests', 3, 'asdfasdfasdgfasg', settings.OSF_API_URL)
+            create_logs('8jpzs', 'tests', 3, 'asdfasdfasdgfasg')
             m.assert_called_with(os.path.join(HERE, '8jpzs/logs/8jpzs-2.json'), 'w')
             mock_mkdir.assert_called_with(os.path.join(HERE, '8jpzs/logs'))
 

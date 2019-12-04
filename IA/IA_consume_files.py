@@ -11,23 +11,6 @@ logging.basicConfig(level=logging.INFO)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    '-g',
-    '--guid',
-    help='This is the GUID of the target node on the OSF'
-)
-parser.add_argument(
-    '-d',
-    '--directory',
-    help='This is the target Directory for the project and its files'
-)
-parser.add_argument(
-    '-t',
-    '--token',
-    help='This is the bearer token for auth. This is required'
-)
-
 
 def consume_files(guid, token, directory):
     path = os.path.join(HERE, directory, guid)
@@ -50,22 +33,11 @@ def consume_files(guid, token, directory):
     else:
         auth_header = {}
 
-    keep_trying = True
-    response = None
-
-    while keep_trying:
-        keep_trying = False
-        try:
-            response = get_with_retry(
-                zip_url.format(guid), retry_on=(429,), headers=auth_header)
-            if response.status_code >= 400:
-                status_code = response.status_code
-                content = getattr(response, 'content', None)
-                raise requests.exceptions.HTTPError(
-                    'Status code {}. {}'.format(status_code, content))
-        except requests.exceptions.RequestException as e:
-            logging.log(logging.ERROR, 'HTTP Request failed: {}'.format(e))
-            raise
+    response = get_with_retry(zip_url.format(guid), retry_on=(429,), headers=auth_header)
+    if response.status_code >= 400:
+        status_code = response.status_code
+        content = getattr(response, 'content', None)
+        raise requests.exceptions.HTTPError('Status code {}. {}'.format(status_code, content))
 
     zipfile_location = os.path.join(path, f'{guid}.zip')
     with open(zipfile_location, 'wb') as file:
@@ -78,20 +50,29 @@ def consume_files(guid, token, directory):
     print('File data successfully transferred!')
 
 
-def main():
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-g',
+        '--guid',
+        help='This is the GUID of the target node on the OSF',
+        required=True
+    )
+    parser.add_argument(
+        '-t',
+        '--token',
+        help='This is the bearer token for auth. This is required',
+        required=True
+    )
+    parser.add_argument(
+        '-d',
+        '--directory',
+        help='This is the target Directory for the project and its files',
+        default='.'
+    )
     args = parser.parse_args()
     guid = args.guid
     directory = args.directory
     token = args.token
 
-    if not guid:
-        raise ValueError('Project GUID must be specified! Use -g')
-    if not directory:
-        # Setting default to current directory
-        directory = '.'
-
     consume_files(guid, token, directory)
-
-
-if __name__ == '__main__':
-    main()

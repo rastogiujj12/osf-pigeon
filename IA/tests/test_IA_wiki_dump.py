@@ -6,7 +6,7 @@ from mock import call
 import unittest
 import responses
 from nose.tools import assert_equal
-from IA.wiki_dump import main
+from IA.IA_wiki_dump import main
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -33,7 +33,7 @@ class TestWikiDumper(unittest.TestCase):
         responses.add(
             responses.Response(
                 responses.GET,
-                'https://localhost:8000/v2/registrations/fxehm/wikis/?page=1',
+                'http://localhost:8000/v2/registrations/fxehm/wikis/',
                 json=wiki_metadata(),
             )
         )
@@ -79,7 +79,7 @@ class TestWikiDumper(unittest.TestCase):
         responses.add(
             responses.Response(
                 responses.GET,
-                'https://localhost:8000/v2/registrations/fxehm/wikis/?page=1',
+                'http://localhost:8000/v2/registrations/fxehm/wikis/',
                 status=429,
                 headers={'Retry-After': '1'},
             )
@@ -87,7 +87,7 @@ class TestWikiDumper(unittest.TestCase):
         responses.add(
             responses.Response(
                 responses.GET,
-                'https://localhost:8000/v2/registrations/fxehm/wikis/?page=1',
+                'http://localhost:8000/v2/registrations/fxehm/wikis/',
                 json=wiki_metadata(),
             )
         )
@@ -131,19 +131,20 @@ class TestWikiDumper(unittest.TestCase):
     @responses.activate
     def test_wiki_dump_multiple_pages(self):
         page1, page2 = wiki_metadata_two_pages()
-
         responses.add(
             responses.Response(
                 responses.GET,
-                'https://localhost:8000/v2/registrations/fxehm/wikis/?page=1',
+                'http://localhost:8000/v2/registrations/fxehm/wikis/',
                 json=page1,
+                match_querystring=True,
             )
         )
         responses.add(
             responses.Response(
                 responses.GET,
-                'https://localhost:8000/v2/registrations/fxehm/wikis/?page=2',
+                'http://localhost:8000/v2/registrations/fxehm/wikis/?page=2',
                 json=page2,
+                match_querystring=True,
             )
         )
 

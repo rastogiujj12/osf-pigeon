@@ -55,7 +55,7 @@ async def upload(bucket_name: str, filename: str, file_content: bytes):
         'x-archive-meta01-collection': OSF_COLLECTION_NAME,
     }
     url = f'{IA_URL}/{bucket_name}/{filename}'
-    resp = put_with_retry(url, headers=headers, data=file_content, retry_on=(429, 503))
+    resp = put_with_retry(f'http://{url}', headers=headers, data=file_content, retry_on=(429, 503))
 
     if resp.status_code != 200:
         error_json = dict(xmltodict.parse(resp.content))
@@ -66,11 +66,17 @@ async def chunked_upload(bucket_name: str, filename: str, file_content: bytes):
     conn = boto.connect_s3(
         IA_ACCESS_KEY,
         IA_SECRET_KEY,
-        host=f'{IA_URL}',
+        host=IA_URL,
         is_secure=False,
         calling_format=OrdinaryCallingFormat(),
     )
     bucket = conn.lookup(bucket_name)
+    if bucket is None:
+        bucket = conn.create_bucket(
+            bucket_name,
+            headers={'x-archive-meta01-collection': OSF_COLLECTION_NAME}
+        )
+
     mp = bucket.initiate_multipart_upload(filename)
 
     tasks = []
