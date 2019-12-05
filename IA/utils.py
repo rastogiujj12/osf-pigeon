@@ -1,9 +1,11 @@
 import math
+import time
 import asyncio
 import requests
 from typing import Tuple, Dict
 from ratelimit import sleep_and_retry
 from ratelimit.exception import RateLimitException
+from functools import wraps
 
 
 @sleep_and_retry
@@ -74,3 +76,20 @@ async def get_paginated_data(url):
         pages_as_list += page
 
     return pages_as_list
+
+
+def sleep_and_retry_on(func, retry_on=Exception, sleep=10, retries=3):
+    @wraps(func)
+    def wrapper(*args, **kargs):
+        _retries = retries
+        while True:
+            try:
+                return func(*args, **kargs)
+            except retry_on as e:
+                print(_retries)
+                if _retries < 1:
+                    raise e
+                else:
+                    _retries -= 1
+                time.sleep(sleep)
+    return wrapper

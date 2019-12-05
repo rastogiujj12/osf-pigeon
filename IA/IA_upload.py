@@ -7,7 +7,7 @@ from boto.s3.multipart import MultiPartUpload
 import asyncio
 import xmltodict
 from io import BytesIO
-from IA.utils import put_with_retry
+from IA.utils import put_with_retry, sleep_and_retry_on
 from settings import (
     CHUNK_SIZE,
     OSF_COLLECTION_NAME,
@@ -77,7 +77,12 @@ async def chunked_upload(bucket_name: str, filename: str, file_content: bytes):
             headers={'x-archive-meta01-collection': OSF_COLLECTION_NAME}
         )
 
-    mp = bucket.initiate_multipart_upload(filename)
+    initiate_multipart_with_retry = sleep_and_retry_on(
+        bucket.initiate_multipart_upload,
+        retry_on=boto.exception.S3ResponseError
+    )
+
+    mp = initiate_multipart_with_retry(filename)
 
     tasks = []
     chunks = [file_content[i:i + CHUNK_SIZE] for i in range(0, len(file_content), CHUNK_SIZE)]
@@ -89,6 +94,7 @@ async def chunked_upload(bucket_name: str, filename: str, file_content: bytes):
 
     await asyncio.gather(*tasks)
 
+    mp.complete_upload()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
