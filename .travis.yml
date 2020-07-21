@@ -6,6 +6,6 @@ python:
     - "3.7"
 
 script:
-    - pip3 install -r requirements.txt
+    - pip3 install -r dev.txt
     - flake8 .
     - python3 -m pytest .

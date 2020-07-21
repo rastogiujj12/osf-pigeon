@@ -542,7 +542,7 @@
             "public": true,
             "fork": false,
             "date_withdrawn": null,
-            "description": "",
+            "description": "Test Description",
             "tags": [],
             "pending_registration_approval": false,
             "collection": false,
