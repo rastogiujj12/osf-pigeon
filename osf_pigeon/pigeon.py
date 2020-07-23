@@ -27,8 +27,8 @@ def get_and_write_file_data_to_temp(url, temp_dir, dir_name):
         fp.write(response.content)
 
 
-def get_and_write_json_to_temp(url, temp_dir, filename):
-    pages = asyncio.run(get_paginated_data(url))
+def get_and_write_json_to_temp(url, temp_dir, filename, parse_json=None):
+    pages = asyncio.run(get_paginated_data(url, parse_json))
     with open(os.path.join(temp_dir, filename), 'w') as fp:
         fp.write(json.dumps(pages))
 
@@ -134,6 +134,12 @@ def main(
             temp_dir,
             'registration.json'
         )
+        get_and_write_json_to_temp(
+            f'{settings.OSF_API_URL}v2/registrations/{guid}/contributors/',
+            temp_dir,
+            'contributors.json',
+            parse_json=get_contributors
+        )
 
         bag_and_tag(
             temp_dir,
@@ -209,18 +215,48 @@ def get_with_retry(
     return resp
 
 
-async def get_pages(url, page, result={}):
+async def get_pages(url, page, result={}, parse_json=None):
     url = f'{url}?page={page}'
     resp = get_with_retry(url, retry_on=(429,))
+
     result[page] = resp.json()['data']
+
+    if parse_json:
+        result[page] = parse_json(resp.json())['data']
+
     return result
 
 
-async def get_paginated_data(url):
+def get_contributors(response):
+    contributor_data_list = []
+    for contributor in response['data']:
+        contributor_data = {}
+        embed_data = contributor['embeds']['users']['data']
+        contributor_data['ORCiD'] = embed_data['attributes']['social'].get('orcid', None)
+        contributor_data['name'] = embed_data['attributes']['full_name']
+        links = embed_data['relationships']['institutions']['links']
+        institution_url = links['related']['href']
+        institution_response = get_with_retry(
+            institution_url, retry_on=(429, ))
+        institution_data = institution_response.json()['data']
+        institution_list = [
+            institution['attributes']['name']
+            for institution in institution_data
+        ]
+        contributor_data['affiliated_institutions'] = institution_list
+        contributor_data_list.append(contributor_data)
+    response['data'] = contributor_data_list
+    return response
+
+
+async def get_paginated_data(url, parse_json=None):
     data = get_with_retry(url, retry_on=(429,)).json()
 
     tasks = []
     is_paginated = data.get('links', {}).get('next')
+
+    if parse_json:
+        data = parse_json(data)
 
     if is_paginated:
         result = {1: data['data']}

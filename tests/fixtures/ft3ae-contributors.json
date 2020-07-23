@@ -1,0 +1,204 @@
+
+{
+  "data": [
+    {
+      "id": "ft3ae-s3rbx",
+      "type": "contributors",
+      "attributes": {
+        "index": 0,
+        "bibliographic": true,
+        "permission": "admin",
+        "unregistered_contributor": null
+      },
+      "relationships": {
+        "users": {
+          "links": {
+            "related": {
+              "href": "http://localhost:8000/v2/users/s3rbx/",
+              "meta": {
+                
+              }
+            }
+          },
+          "data": {
+            "id": "s3rbx",
+            "type": "users"
+          }
+        },
+        "node": {
+          "links": {
+            "related": {
+              "href": "http://localhost:8000/v2/nodes/ft3ae/",
+              "meta": {
+                
+              }
+            }
+          },
+          "data": {
+            "id": "ft3ae",
+            "type": "nodes"
+          }
+        }
+      },
+      "embeds": {
+        "users": {
+          "data": {
+            "id": "s3rbx",
+            "type": "users",
+            "attributes": {
+              "full_name": "Jim Smith",
+              "given_name": "Jim",
+              "middle_names": "R.",
+              "family_name": "Smith",
+              "suffix": "",
+              "date_registered": "2018-08-10T14:41:50.136000",
+              "active": true,
+              "timezone": "America/New_York",
+              "locale": "en_US",
+              "social": {
+                "ssrn": "",
+                "orcid": "0000-0001-4934-3444",
+                "github": "",
+                "scholar": "",
+                "twitter": "",
+                "linkedIn": "",
+                "impactStory": "",
+                "baiduScholar": "",
+                "researchGate": "",
+                "researcherId": "",
+                "profileWebsites": [
+                  
+                ],
+                "academiaProfileID": "",
+                "academiaInstitution": ""
+              },
+              "employment": [
+                {
+                  "title": "Director",
+                  "endYear": "",
+                  "ongoing": true,
+                  "endMonth": null,
+                  "startYear": "2014",
+                  "department": "",
+                  "startMonth": 5,
+                  "institution": "Center for Open Science"
+                }
+              ],
+              "education": [
+                {
+                  "degree": "B.S.",
+                  "endYear": "2009",
+                  "ongoing": false,
+                  "endMonth": 5,
+                  "startYear": "2005",
+                  "department": "Computer Science",
+                  "startMonth": 8,
+                  "institution": "Fangorn College"
+                }
+              ]
+            },
+            "relationships": {
+              "nodes": {
+                "links": {
+                  "related": {
+                    "href": "http://localhost:8000/v2/users/s3rbx/nodes/",
+                    "meta": {
+                      
+                    }
+                  }
+                }
+              },
+              "groups": {
+                "links": {
+                  "related": {
+                    "href": "http://localhost:8000/v2/users/s3rbx/groups/",
+                    "meta": {
+                      
+                    }
+                  }
+                }
+              },
+              "quickfiles": {
+                "links": {
+                  "related": {
+                    "href": "http://localhost:8000/v2/users/s3rbx/quickfiles/",
+                    "meta": {
+                      
+                    }
+                  },
+                  "upload": {
+                    "href": "https://files.osf.io/v1/resources/46uqeyvzsy/providers/osfstorage/",
+                    "meta": {
+                      
+                    }
+                  },
+                  "download": {
+                    "href": "https://files.osf.io/v1/resources/46uqeyvzsy/providers/osfstorage/?zip=",
+                    "meta": {
+                      
+                    }
+                  }
+                }
+              },
+              "registrations": {
+                "links": {
+                  "related": {
+                    "href": "http://localhost:8000/v2/users/s3rbx/registrations/",
+                    "meta": {
+                      
+                    }
+                  }
+                }
+              },
+              "institutions": {
+                "links": {
+                  "related": {
+                    "href": "http://localhost:8000/v2/users/s3rbx/institutions/",
+                    "meta": {
+                      
+                    }
+                  },
+                  "self": {
+                    "href": "http://localhost:8000/v2/users/s3rbx/relationships/institutions/",
+                    "meta": {
+                      
+                    }
+                  }
+                }
+              },
+              "preprints": {
+                "links": {
+                  "related": {
+                    "href": "http://localhost:8000/v2/users/s3rbx/preprints/",
+                    "meta": {
+                      
+                    }
+                  }
+                }
+              }
+            },
+            "links": {
+              "html": "https://osf.io/s3rbx/",
+              "profile_image": "https://secure.imgur.com",
+              "self": "http://localhost:8000/v2/users/s3rbx/"
+            }
+          }
+        }
+      },
+      "links": {
+        "self": "http://localhost:8000/v2/registrations/ft3ae/contributors/s3rbx/"
+      }
+    }
+  ],
+  "links": {
+    "first": null,
+    "last": null,
+    "prev": null,
+    "next": null,
+    "meta": {
+      "total": 1,
+      "per_page": 10,
+      "total_bibliographic": 1
+    }
+  }
+}
