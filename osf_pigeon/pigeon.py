@@ -108,7 +108,8 @@ def main(
         datacite_password=settings.DATACITE_PASSWORD,
         datacite_prefix=settings.DATACITE_PREFIX,
         ia_access_key=settings.IA_ACCESS_KEY,
-        ia_secret_key=settings.IA_SECRET_KEY):
+        ia_secret_key=settings.IA_SECRET_KEY,
+        multi_level=True):
 
     assert isinstance(ia_access_key, str), 'Internet Archive access key was not passed to pigeon'
     assert isinstance(ia_secret_key, str), 'Internet Archive secret key not passed to pigeon'
@@ -141,6 +142,18 @@ def main(
             parse_json=get_contributors
         )
 
+        if multi_level:
+            children_data = gather_children(
+                guid,
+                datacite_username=datacite_username,
+                datacite_password=datacite_password,
+                datacite_prefix=datacite_prefix,
+                ia_access_key=ia_access_key,
+                ia_secret_key=ia_secret_key
+            )
+            with open(os.path.join(temp_dir, 'children.json'), 'w') as fp:
+                fp.write(json.dumps(children_data))
+
         bag_and_tag(
             temp_dir,
             guid,
@@ -170,6 +183,44 @@ def main(
             secret_key=ia_secret_key,
         )
         modify_metadata_with_retry(ia_item, metadata)
+
+        return ia_item.urls.details
+
+
+def gather_children(
+        guid,
+        datacite_username=settings.DATACITE_USERNAME,
+        datacite_password=settings.DATACITE_PASSWORD,
+        datacite_prefix=settings.DATACITE_PREFIX,
+        ia_access_key=settings.IA_ACCESS_KEY,
+        ia_secret_key=settings.IA_SECRET_KEY):
+
+    response = get_with_retry(
+        f'{settings.OSF_API_URL}v2/registrations/?filter[root]={guid}',
+        retry_on=(429,))
+    children = response.json()['data']
+
+    children_guids = [child['id'] for child in children if child['id'] != guid]
+
+    children_data = []
+
+    for child_guid in children_guids:
+        child_data = {}
+        child_url = main(
+            child_guid,
+            datacite_username=datacite_username,
+            datacite_password=datacite_password,
+            datacite_prefix=datacite_prefix,
+            ia_access_key=ia_access_key,
+            ia_secret_key=ia_secret_key,
+            multi_level=False
+        )
+        child_data['child_IA_url'] = child_url
+        child_data['child_guid'] = child_guid
+
+        children_data.append(child_data)
+
+    return {'data': children_data}
 
 
 def build_doi(guid):
