@@ -16,11 +16,17 @@ Install
 
 Simply install the package using python's package manager pip with bash:
  
- ``pip3 install osf_pigeon``
+```
+pip3 install osf_pigeon
+```
+
  
 To use for local development just remember to install the developer requirements using:
 
- ``pip3 install -r dev.txt``
+```
+pip3 install -r dev.txt
+```
+
 
 Use
 ============
@@ -29,32 +35,15 @@ This should be able to export registrations from
 Assuming the registration is fully public and the DOI has been minted properly at datacite. 
 
 
-Run from package
+Run
 ============
 
+Simply install and run from commandline
 
-Simply import the module and enter a guid with credentials::
-
- from osf_pigeon.pigeon import main
-
- main(
-    'guid0',
-    datacite_username='test_datacite_username',
-    datacite_password='test_datacite_password',
-    datacite_prefix='test_datacite_prefix',
-    ia_access_key='test_datacite_password',
-    ia_secret_key='test_datacite_password',
- )
-
-That's it!
-
-Run as script
-============
-
-To run as script just -m to execute the module:
-
- python3 -m osf_pigeon -g u8p3q 
-
+```
+    python3 -m osf_python --env=staging
+```
+That's it! 
 
 Running in development
 ========================
@@ -64,9 +53,10 @@ Tests
 ============
 
 Running tests are easy enough just::
-
+```
  pip3 install -r dev.txt
  python3 -m pytest . 
+```
 
 
 Linting
