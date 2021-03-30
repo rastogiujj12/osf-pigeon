@@ -89,11 +89,12 @@ async def format_metadata_for_ia_item(json_metadata):
         f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/contributors/?'
         f"filter[bibliographic]=True&fields[users]=full_name"
     )
-    biblo_contrbs = [
-        contrib["embeds"]["users"]["data"]["attributes"]["full_name"]
-        for contrib in biblo_contrbs["data"]
-    ]
-
+    if biblo_contrbs:
+        biblo_contrbs = [
+            contrib["embeds"]["users"]["data"]["attributes"]["full_name"]
+            for contrib in biblo_contrbs['data']
+        ]
+        
     institutions = (
         await get_paginated_data(
             f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/institutions/'
