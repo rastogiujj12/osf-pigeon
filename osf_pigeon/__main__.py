@@ -60,6 +60,14 @@ if __name__ == "__main__":
 
     from osf_pigeon import settings
 
+    if settings.SENTRY_DSN:
+        import sentry_sdk
+        from sentry_sdk.integrations.sanic import SanicIntegration
+        sentry_sdk.init(
+            dsn=settings.SENTRY_DSN,
+            integrations=[SanicIntegration()]
+        )
+
     if args.env == "production":
         app.run(host=settings.HOST, port=settings.PORT)
     else:
