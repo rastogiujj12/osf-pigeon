@@ -69,7 +69,7 @@ async def format_metadata_for_ia_item(json_metadata):
         - contributor
         - category
         - tags
-        - contributors
+        - authors (biblographic contributors, IA uses the keyword contributor)
         - article_doi
         - registration_doi
         - children
@@ -125,6 +125,7 @@ async def format_metadata_for_ia_item(json_metadata):
         ),
         None,
     )
+    osf_url = '/'.join(json_metadata['data']['links']['html'].split('/')[:3]) + '/'
     article_doi = json_metadata["data"]["attributes"]["article_doi"]
     ia_metadata = {
         "title": json_metadata["data"]["attributes"]["title"],
@@ -133,7 +134,7 @@ async def format_metadata_for_ia_item(json_metadata):
         "contributor": "Center for Open Science",
         "category": json_metadata["data"]["attributes"]["category"],
         "tags": json_metadata["data"]["attributes"]["tags"],
-        "contributors": biblo_contrbs,
+        "authors": biblo_contrbs,
         "article_doi": f"urn:doi:{article_doi}" if article_doi else "",
         "registration_doi": doi,
         "children": [
@@ -144,9 +145,7 @@ async def format_metadata_for_ia_item(json_metadata):
         "registration_schema": embeds["registration_schema"]["data"]["attributes"][
             "name"
         ],
-        "registered_from": json_metadata["data"]["relationships"]["registered_from"][
-            "links"
-        ]["related"]["href"],
+        "registered_from":  osf_url + json_metadata["data"]["relationships"]["registered_from"]['data']['id'],
         "affiliated_institutions": [
             institution["attributes"]["name"] for institution in institutions
         ],
@@ -355,7 +354,7 @@ async def get_registration_metadata(guid, temp_dir, filename):
         f"&embed=identifiers"
         f"&embed=license"
         f"&embed=registration_schema"
-        f"&related_counts=true"
+        f"&related_counts=files,children"
         f"&version=2.20"
     )
     if metadata["data"]["attributes"]["withdrawn"]:
