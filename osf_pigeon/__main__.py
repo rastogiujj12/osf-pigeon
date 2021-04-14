@@ -12,17 +12,23 @@ app = Sanic("osf_pigeon")
 pigeon_jobs = ThreadPoolExecutor(max_workers=10, thread_name_prefix="pigeon_jobs")
 
 
-def task_done(future):
+def archive_task_done(future):
     if future.exception():
-        exception = future.exception()
-        exception = str(exception)
-        logger.debug(f"ERROR:{exception}")
-    if future.result():
-        guid, url = future.result()
-        resp = requests.post(
-            f"{settings.OSF_API_URL}_/ia/{guid}/done/", json={"IA_url": url}
-        )
-        logger.debug(f"DONE:{future._result} Response:{resp}")
+        logger.error(future.exception())
+        return
+
+    ia_item, guid = future.result()
+    resp = requests.post(f"{settings.OSF_API_URL}_/ia/{guid}/done/", json={"ia_url": ia_item.urls.details})
+    logger.debug(f"Done:{ia_item.urls.details} Callback status:{resp}")
+
+
+def metadata_task_done(future):
+    if future.exception():
+        logger.error(future.exception())
+        return
+
+    ia_item, updated_metadata = future.result()
+    logger.debug(f"Done:{ia_item.urls.details} Updated:{updated_metadata}")
 
 
 @app.route("/")
@@ -33,15 +39,14 @@ async def index(request):
 @app.route("/archive/<guid>", methods=["GET", "POST"])
 async def archive(request, guid):
     future = pigeon_jobs.submit(pigeon.run, pigeon.archive(guid))
-    future.add_done_callback(task_done)
+    future.add_done_callback(archive_task_done)
     return json({guid: future._state})
 
 
 @app.route("/metadata/<guid>", methods=["POST"])
 async def set_metadata(request, guid):
-    item_name = pigeon.REG_ID_TEMPLATE.format(guid=guid)
-    future = pigeon_jobs.submit(pigeon.sync_metadata, item_name, request.json)
-    future.add_done_callback(task_done)
+    future = pigeon_jobs.submit(pigeon.sync_metadata, guid, request.json)
+    future.add_done_callback(metadata_task_done)
     return json({guid: future._state})
 
 
@@ -61,12 +66,9 @@ if __name__ == "__main__":
     from osf_pigeon import settings
 
     if settings.SENTRY_DSN:
-        import sentry_sdk
-        from sentry_sdk.integrations.sanic import SanicIntegration
-        sentry_sdk.init(
-            dsn=settings.SENTRY_DSN,
-            integrations=[SanicIntegration()]
-        )
+        from sanic_sentry import SanicSentry
+        SanicSentry(app).init_app(app)
+        app.config['SENTRY_DSN'] = settings.SENTRY_DSN
 
     if args.env == "production":
         app.run(host=settings.HOST, port=settings.PORT)

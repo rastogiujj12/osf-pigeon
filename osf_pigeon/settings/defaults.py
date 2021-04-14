@@ -15,7 +15,7 @@ HOST = "0.0.0.0"
 
 PORT = 2020
 
-SENTRY_DSN = os.environ.get('SENTRY_DSN')
+SENTRY_DSN = os.environ.get("SENTRY_DSN")
 
 ENV = {
     "production": {

@@ -54,7 +54,7 @@ def create_zip_data(temp_dir):
     return zip_data
 
 
-async def format_metadata_for_ia_item(json_metadata):
+async def get_metadata_for_ia_item(json_metadata):
     """
     This is meant to take the response JSON metadata and format it for IA buckets, this is not
     used to generate JSON to be uploaded as raw data into the buckets.
@@ -79,44 +79,39 @@ async def format_metadata_for_ia_item(json_metadata):
         - affiliated_institutions
         - license
         - parent
+        - subjects
     """
 
     date_string = json_metadata["data"]["attributes"]["date_created"]
     date_string = date_string.partition(".")[0]
     date_time = datetime.strptime(date_string, "%Y-%m-%dT%H:%M:%S")
 
-    biblo_contrbs = await get_paginated_data(
-        f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/contributors/?'
-        f"filter[bibliographic]=True&fields[users]=full_name"
-    )
-    if biblo_contrbs:
-        biblo_contrbs = [
-            contrib["embeds"]["users"]["data"]["attributes"]["full_name"]
-            for contrib in biblo_contrbs['data']
-        ]
-        
+    biblo_contrbs = (
+        await get_paginated_data(
+            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/contributors/?'
+            f"filter[bibliographic]=True"
+        )
+    )["data"]
+
     institutions = (
         await get_paginated_data(
             f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/institutions/'
         )
     )["data"]
 
-    embeds = json_metadata["data"]["embeds"]
-
-    #  10 is default page size
-    if (
-        json_metadata["data"]["relationships"]["children"]["links"]["related"]["meta"][
-            "count"
-        ]
-        > 10
-    ):
-        children = await get_paginated_data(
-            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/children/'
-            f"?fields[registrations]=id"
+    subjects = (
+        await get_paginated_data(
+            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/institutions/'
         )
-    else:
-        children = embeds["children"]["data"]
+    )["data"]
 
+    children = (
+        await get_paginated_data(
+            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/children/'
+        )
+    )["data"]
+
+    embeds = json_metadata["data"]["embeds"]
     doi = next(
         (
             identifier["attributes"]["value"]
@@ -125,7 +120,7 @@ async def format_metadata_for_ia_item(json_metadata):
         ),
         None,
     )
-    osf_url = '/'.join(json_metadata['data']['links']['html'].split('/')[:3]) + '/'
+    osf_url = "/".join(json_metadata["data"]["links"]["html"].split("/")[:3]) + "/"
     article_doi = json_metadata["data"]["attributes"]["article_doi"]
     ia_metadata = {
         "title": json_metadata["data"]["attributes"]["title"],
@@ -134,7 +129,11 @@ async def format_metadata_for_ia_item(json_metadata):
         "contributor": "Center for Open Science",
         "category": json_metadata["data"]["attributes"]["category"],
         "tags": json_metadata["data"]["attributes"]["tags"],
-        "authors": biblo_contrbs,
+        "authors": [
+            contrib["embeds"]["users"]["data"]["attributes"]["full_name"]
+            for contrib in biblo_contrbs
+        ],
+        "subjects": subjects,
         "article_doi": f"urn:doi:{article_doi}" if article_doi else "",
         "registration_doi": doi,
         "children": [
@@ -145,7 +144,8 @@ async def format_metadata_for_ia_item(json_metadata):
         "registration_schema": embeds["registration_schema"]["data"]["attributes"][
             "name"
         ],
-        "registered_from":  osf_url + json_metadata["data"]["relationships"]["registered_from"]['data']['id'],
+        "registered_from": osf_url
+        + json_metadata["data"]["relationships"]["registered_from"]["data"]["id"],
         "affiliated_institutions": [
             institution["attributes"]["name"] for institution in institutions
         ],
@@ -285,16 +285,24 @@ def get_ia_item(guid):
     return session.get_item(guid)
 
 
-def sync_metadata(item_name, metadata):
+def sync_metadata(guid, metadata):
+    if not metadata:
+        return
+
+    item_name = REG_ID_TEMPLATE.format(guid=guid)
     ia_item = get_ia_item(item_name)
     if metadata.get("moderation_state") == "withdrawn":  # withdrawn == not searchable
-        metadata["description"] = (
-            "Note this registration has been withdrawn: \n" + metadata["description"]
-        )
-        metadata["noindex"] = True
-    ia_item.modify_metadata(metadata.copy())
+        description = ia_item.metadata.get("description")
+        if description:
+            metadata["description"] = f"Note this registration has been withdrawn: \n{description}"
+        else:
+            metadata['description'] = "This registration has been withdrawn"
 
-    return metadata, ia_item.urls.details
+        #metadata["noindex"] = True
+
+    ia_item.modify_metadata(metadata)
+
+    return ia_item, list(metadata.keys())
 
 
 def create_subcollection(collection_id, metadata=None, parent_collection=None):
@@ -330,7 +338,7 @@ def create_subcollection(collection_id, metadata=None, parent_collection=None):
 
 async def upload(item_name, data, metadata):
     ia_item = get_ia_item(item_name)
-    ia_metadata = await format_metadata_for_ia_item(metadata)
+    ia_metadata = await get_metadata_for_ia_item(metadata)
     provider_id = metadata["data"]["embeds"]["provider"]["data"]["id"]
 
     ia_item.upload(
@@ -408,14 +416,14 @@ async def archive(guid):
                 parse_json=get_contributors,
             ),
         ]
-        # only download achived data if there are files
+        # only download archived data if there are files
         file_count = metadata["data"]["relationships"]["files"]["links"]["related"][
             "meta"
         ]["count"]
         if file_count:
             tasks.append(get_raw_data(guid, temp_dir))
 
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
         bagit.make_bag(temp_dir)
         bag = bagit.Bag(temp_dir)
         assert bag.is_valid()
@@ -423,7 +431,7 @@ async def archive(guid):
         zip_data = create_zip_data(temp_dir)
         ia_item = await upload(REG_ID_TEMPLATE.format(guid=guid), zip_data, metadata)
 
-        return guid, ia_item.urls.details
+        return ia_item, guid
 
 
 def run(coroutine):
