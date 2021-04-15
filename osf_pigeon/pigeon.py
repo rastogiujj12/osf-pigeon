@@ -54,6 +54,10 @@ def create_zip_data(temp_dir):
     return zip_data
 
 
+async def get_relationship_attribute(key, url, func):
+    return {key: list(map(func, (await get_paginated_data(url))["data"]))}
+
+
 async def get_metadata_for_ia_item(json_metadata):
     """
     This is meant to take the response JSON metadata and format it for IA buckets, this is not
@@ -81,37 +85,46 @@ async def get_metadata_for_ia_item(json_metadata):
         - parent
         - subjects
     """
+    relationship_data = [
+        get_relationship_attribute(
+            "authors",
+            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/contributors/?filter[bibliographic]=True',
+            lambda contrib: contrib["embeds"]["users"]["data"]["attributes"][
+                "full_name"
+            ],
+        ),
+        get_relationship_attribute(
+            "affiliated_institutions",
+            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/institutions/',
+            lambda institution: institution["attributes"]["name"],
+        ),
+        get_relationship_attribute(
+            "subjects",
+            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/subjects/',
+            lambda subject: subject["attributes"]["text"],
+        ),
+        get_relationship_attribute(
+            "children",
+            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/children/',
+            lambda child: f'https://archive.org/details/{REG_ID_TEMPLATE.format(guid=child["id"])}',
+        ),
+    ]
 
-    date_string = json_metadata["data"]["attributes"]["date_created"]
-    date_string = date_string.partition(".")[0]
-    date_time = datetime.strptime(date_string, "%Y-%m-%dT%H:%M:%S")
+    relationship_data = {
+        k: v
+        for pair in await asyncio.gather(*relationship_data)
+        for k, v in pair.items()
+    }  # merge all the pairs
 
-    biblo_contrbs = (
-        await get_paginated_data(
-            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/contributors/?'
-            f"filter[bibliographic]=True"
-        )
-    )["data"]
-
-    institutions = (
-        await get_paginated_data(
-            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/institutions/'
-        )
-    )["data"]
-
-    subjects = (
-        await get_paginated_data(
-            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/institutions/'
-        )
-    )["data"]
-
-    children = (
-        await get_paginated_data(
-            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/children/'
-        )
-    )["data"]
+    parent = json_metadata["data"]["relationships"]["parent"]["data"]
+    if parent:
+        relationship_data["parent"] = f"https://archive.org/details/{REG_ID_TEMPLATE.format(guid=parent['id'])}"
 
     embeds = json_metadata["data"]["embeds"]
+
+    if not embeds["license"].get("errors"):  # Fix me
+        relationship_data["license"] = embeds["license"]["data"]["attributes"]["url"]
+
     doi = next(
         (
             identifier["attributes"]["value"]
@@ -121,66 +134,52 @@ async def get_metadata_for_ia_item(json_metadata):
         None,
     )
     osf_url = "/".join(json_metadata["data"]["links"]["html"].split("/")[:3]) + "/"
+
+    attributes = json_metadata["data"]["attributes"]
     article_doi = json_metadata["data"]["attributes"]["article_doi"]
     ia_metadata = {
-        "title": json_metadata["data"]["attributes"]["title"],
-        "description": json_metadata["data"]["attributes"]["description"],
-        "date_created": date_time.strftime("%Y-%m-%d"),
         "contributor": "Center for Open Science",
-        "category": json_metadata["data"]["attributes"]["category"],
-        "tags": json_metadata["data"]["attributes"]["tags"],
-        "authors": [
-            contrib["embeds"]["users"]["data"]["attributes"]["full_name"]
-            for contrib in biblo_contrbs
-        ],
-        "subjects": subjects,
-        "article_doi": f"urn:doi:{article_doi}" if article_doi else "",
         "registration_doi": doi,
-        "children": [
-            f'https://archive.org/details/{REG_ID_TEMPLATE.format(guid=child["id"])}'
-            for child in children
-        ],
+        "title": attributes["title"],
+        "description": attributes["description"],
+        "category": attributes["category"],
+        "tags": attributes["tags"],
+        "date_created": attributes["date_created"],
+        "article_doi": f"urn:doi:{article_doi}" if article_doi else "",
         "registry": embeds["provider"]["data"]["attributes"]["name"],
         "registration_schema": embeds["registration_schema"]["data"]["attributes"][
             "name"
         ],
         "registered_from": osf_url
         + json_metadata["data"]["relationships"]["registered_from"]["data"]["id"],
-        "affiliated_institutions": [
-            institution["attributes"]["name"] for institution in institutions
-        ],
+        **relationship_data,
     }
-
-    if not embeds["license"].get("errors"):
-        ia_metadata["license"] = embeds["license"]["data"]["attributes"]["url"]
-
-    if json_metadata["data"]["relationships"]["parent"]["data"]:
-        parent_id = REG_ID_TEMPLATE.format(
-            guid=json_metadata["data"]["relationships"]["parent"]["data"]["id"]
-        )
-        ia_metadata["parent"] = f"https://archive.org/details/{parent_id}"
 
     return ia_metadata
 
 
 async def write_datacite_metadata(guid, temp_dir, metadata):
-    doi = [
-        identifier["attributes"]["value"]
-        for identifier in metadata["data"]["embeds"]["identifiers"]["data"]
-        if identifier["attributes"]["category"] == "doi"
-    ]
-    if not doi:
+
+    try:
+        doi = next(
+            (
+                identifier["attributes"]["value"]
+                for identifier in metadata['data']['embeds']["identifiers"]["data"]
+                if identifier["attributes"]["category"] == "doi"
+            )
+        )
+    except StopIteration:
         raise DataCiteNotFoundError(
             f"Datacite DOI not found for registration {guid} on OSF server."
         )
-    else:
-        doi = doi[0]
+
     client = DataCiteMDSClient(
         url=settings.DATACITE_URL,
         username=settings.DATACITE_USERNAME,
         password=settings.DATACITE_PASSWORD,
         prefix=settings.DATACITE_PREFIX,
     )
+
     try:
         xml_metadata = client.metadata_get(doi)
     except DataCiteNotFoundError:
@@ -294,11 +293,13 @@ def sync_metadata(guid, metadata):
     if metadata.get("moderation_state") == "withdrawn":  # withdrawn == not searchable
         description = ia_item.metadata.get("description")
         if description:
-            metadata["description"] = f"Note this registration has been withdrawn: \n{description}"
+            metadata[
+                "description"
+            ] = f"Note this registration has been withdrawn: \n{description}"
         else:
-            metadata['description'] = "This registration has been withdrawn"
+            metadata["description"] = "This registration has been withdrawn"
 
-        #metadata["noindex"] = True
+        metadata["noindex"] = True
 
     ia_item.modify_metadata(metadata)
 
@@ -362,7 +363,7 @@ async def get_registration_metadata(guid, temp_dir, filename):
         f"&embed=identifiers"
         f"&embed=license"
         f"&embed=registration_schema"
-        f"&related_counts=files,children"
+        f"&related_counts=true"
         f"&version=2.20"
     )
     if metadata["data"]["attributes"]["withdrawn"]:
@@ -393,7 +394,6 @@ async def archive(guid):
     ) as temp_dir:
         # await first to check if withdrawn
         metadata = await get_registration_metadata(guid, temp_dir, "registration.json")
-
         tasks = [
             write_datacite_metadata(guid, temp_dir, metadata),
             get_and_write_json_to_temp(

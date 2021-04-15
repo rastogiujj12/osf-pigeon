@@ -3,5 +3,5 @@ datacite==1.0.1
 internetarchive==1.9.9
 ratelimit==2.2.1
 requests==2.25.1
-Sanic==20.12.2
-sanic-sentry
+Sanic==21.3.2
+raven

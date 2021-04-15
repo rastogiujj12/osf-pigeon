@@ -12,7 +12,7 @@ from osf_pigeon.pigeon import (
     get_and_write_file_data_to_temp,
     get_and_write_json_to_temp,
     create_zip_data,
-    format_metadata_for_ia_item,
+    get_metadata_for_ia_item,
     get_contributors,
     sync_metadata,
     upload,
@@ -295,6 +295,11 @@ class TestMetadata:
             return fp.read()
 
     @pytest.fixture
+    def subjects_json(self):
+        with open(os.path.join(HERE, "fixtures/subjects.json"), "rb") as fp:
+            return fp.read()
+
+    @pytest.fixture
     def biblio_contribs(self):
         with open(os.path.join(HERE, "fixtures/biblio-contribs.json"), "rb") as fp:
             return fp.read()
@@ -306,6 +311,7 @@ class TestMetadata:
         mock_osf_api,
         institutions_json,
         biblio_contribs,
+        subjects_json
     ):
         mock_osf_api.add(
             responses.GET,
@@ -316,8 +322,7 @@ class TestMetadata:
         mock_osf_api.add(
             responses.GET,
             f"{settings.OSF_API_URL}v2/registrations/8gqkv/contributors/"
-            f"?filter%5Bbibliographic%5D=True"
-            f"&fields%5Busers%5D=full_name",
+            f"?filter%5Bbibliographic%5D=True",
             body=biblio_contribs,
         )
         mock_osf_api.add(
@@ -327,10 +332,15 @@ class TestMetadata:
         )
         mock_osf_api.add(
             responses.GET,
+            f"{settings.OSF_API_URL}v2/registrations/8gqkv/subjects/",
+            body=subjects_json,
+        )
+        mock_osf_api.add(
+            responses.GET,
             f"{settings.OSF_API_URL}v2/registrations/pkdm6/children/?fields%5Bregistrations%5D=id",
             body=registration_children_sparse,
         )
-        metadata = run(format_metadata_for_ia_item(metadata))
+        metadata = run(get_metadata_for_ia_item(metadata))
         assert metadata == {
             "title": "Test Component",
             "description": "Test Description",
@@ -361,7 +371,7 @@ class TestMetadata:
             "contributor": "Center for Open Science",
         }
         sync_metadata(guid, metadata)
-        mock_ia_client.session.get_item.assert_called_with("guid0")
+        mock_ia_client.session.get_item.assert_called_with("osf-registrations-guid0-staging_v1")
         mock_ia_client.item.modify_metadata.assert_called_with(metadata)
 
     def test_modify_metadata_not_public(self, mock_ia_client, guid):
@@ -370,11 +380,10 @@ class TestMetadata:
             "description": "Test Description",
             "date": "2017-12-20",
             "contributor": "Center for Open Science",
-            "is_public": False,
             "moderation_state": "withdrawn",
         }
-        sync_metadata(guid, metadata.copy())
-        mock_ia_client.session.get_item.assert_called_with("guid0")
+        sync_metadata(guid, metadata)
+        mock_ia_client.session.get_item.assert_called_with("osf-registrations-guid0-staging_v1")
 
         metadata["noindex"] = True
         metadata[
@@ -419,6 +428,11 @@ class TestUpload:
     @pytest.fixture
     def biblio_contribs(self):
         with open(os.path.join(HERE, "fixtures/biblio-contribs.json"), "rb") as fp:
+            return fp.read()
+
+    @pytest.fixture
+    def biblio_contribs(self):
+        with open(os.path.join(HERE, "fixtures/subjects.json"), "rb") as fp:
             return fp.read()
 
     def test_upload(
@@ -512,13 +526,17 @@ class TestUpload:
         mock_osf_api.add(
             responses.GET,
             f"{settings.OSF_API_URL}v2/registrations/8gqkv/contributors/"
-            f"?filter%5Bbibliographic%5D=True"
-            f"&fields%5Busers%5D=full_name",
+            f"?filter%5Bbibliographic%5D=True",
             body=biblio_contribs,
         )
         mock_osf_api.add(
             responses.GET,
             f"{settings.OSF_API_URL}v2/registrations/8gqkv/institutions/",
+            body=institutions_json,
+        )
+        mock_osf_api.add(
+            responses.GET,
+            f"{settings.OSF_API_URL}v2/registrations/8gqkv/subjects/",
             body=institutions_json,
         )
         run(
