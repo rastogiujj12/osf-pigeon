@@ -311,7 +311,7 @@ class TestMetadata:
         mock_osf_api,
         institutions_json,
         biblio_contribs,
-        subjects_json
+        subjects_json,
     ):
         mock_osf_api.add(
             responses.GET,
@@ -322,7 +322,7 @@ class TestMetadata:
         mock_osf_api.add(
             responses.GET,
             f"{settings.OSF_API_URL}v2/registrations/8gqkv/contributors/"
-            f"?filter%5Bbibliographic%5D=True",
+            f"?filter%5Bbibliographic%5D=true",
             body=biblio_contribs,
         )
         mock_osf_api.add(
@@ -337,28 +337,29 @@ class TestMetadata:
         )
         mock_osf_api.add(
             responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/pkdm6/children/?fields%5Bregistrations%5D=id",
+            f"{settings.OSF_API_URL}v2/registrations/8gqkv/children/",
             body=registration_children_sparse,
         )
         metadata = run(get_metadata_for_ia_item(metadata))
         assert metadata == {
             "title": "Test Component",
             "description": "Test Description",
-            "date_created": "2017-12-20",
+            "date_created": "2017-12-20T16:03:47.327319Z",
             "contributor": "Center for Open Science",
             "category": "",
             "license": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
             "tags": [],
-            "contributors": ["John Tordoff"],
+            "authors": ["John Tordoff"],
+            "subjects": ["Life Sciences"],
             "article_doi": "",
             "registration_doi": "10.70102/osf.io/guid0",
             "children": [
-                f"https://archive.org/details/osf-registrations-hbs3p-{ID_VERSION}",
-                f"https://archive.org/details/osf-registrations-ec9db-{ID_VERSION}",
+                f"https://archive.org/details/osf-registrations-hu68d-{ID_VERSION}",
+                f"https://archive.org/details/osf-registrations-puxmb-{ID_VERSION}",
             ],
             "registry": "OSF Registries",
             "registration_schema": "Open-Ended Registration",
-            "registered_from": "http://localhost:8000/v2/nodes/g752b/",
+            "registered_from": "http://localhost:5000/g752b",
             "affiliated_institutions": ["The Center For Open Science [Stage]"],
             "parent": f"https://archive.org/details/osf-registrations-dgkjr-{ID_VERSION}",
         }
@@ -371,7 +372,9 @@ class TestMetadata:
             "contributor": "Center for Open Science",
         }
         sync_metadata(guid, metadata)
-        mock_ia_client.session.get_item.assert_called_with("osf-registrations-guid0-staging_v1")
+        mock_ia_client.session.get_item.assert_called_with(
+            "osf-registrations-guid0-staging_v1"
+        )
         mock_ia_client.item.modify_metadata.assert_called_with(metadata)
 
     def test_modify_metadata_not_public(self, mock_ia_client, guid):
@@ -383,7 +386,9 @@ class TestMetadata:
             "moderation_state": "withdrawn",
         }
         sync_metadata(guid, metadata)
-        mock_ia_client.session.get_item.assert_called_with("osf-registrations-guid0-staging_v1")
+        mock_ia_client.session.get_item.assert_called_with(
+            "osf-registrations-guid0-staging_v1"
+        )
 
         metadata["noindex"] = True
         metadata[
@@ -431,7 +436,7 @@ class TestUpload:
             return fp.read()
 
     @pytest.fixture
-    def biblio_contribs(self):
+    def subjects_json(self):
         with open(os.path.join(HERE, "fixtures/subjects.json"), "rb") as fp:
             return fp.read()
 
@@ -445,24 +450,28 @@ class TestUpload:
         biblio_contribs,
         metadata,
         institutions_json,
+        subjects_json,
     ):
         mock_osf_api.add(
             responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/8gqkv/children/"
-            f"?fields%5Bregistrations%5D=id",
+            f"{settings.OSF_API_URL}v2/registrations/8gqkv/children/",
             body=registration_children_sparse,
         )
         mock_osf_api.add(
             responses.GET,
             f"{settings.OSF_API_URL}v2/registrations/8gqkv/contributors/"
-            f"?filter%5Bbibliographic%5D=True"
-            f"&fields%5Busers%5D=full_name",
+            f"?filter%5Bbibliographic%5D=true",
             body=biblio_contribs,
         )
         mock_osf_api.add(
             responses.GET,
             f"{settings.OSF_API_URL}v2/registrations/8gqkv/institutions/",
             body=institutions_json,
+        )
+        mock_osf_api.add(
+            responses.GET,
+            f"{settings.OSF_API_URL}v2/registrations/8gqkv/subjects/",
+            body=subjects_json,
         )
         run(
             upload(
@@ -477,25 +486,26 @@ class TestUpload:
             mock.ANY,
             metadata={
                 "collection": f"collection-osf-registration-providers-osf-{ID_VERSION}",
+                "contributor": "Center for Open Science",
+                "registration_doi": "10.70102/osf.io/guid0",
                 "title": "Test Component",
                 "description": "Test Description",
-                "date_created": "2017-12-20",
-                "contributor": "Center for Open Science",
                 "category": "",
-                "license": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
                 "tags": [],
-                "contributors": ["John Tordoff"],
+                "date_created": "2017-12-20T16:03:47.327319Z",
                 "article_doi": "",
-                "registration_doi": "10.70102/osf.io/guid0",
-                "children": [
-                    f"https://archive.org/details/osf-registrations-hbs3p-{ID_VERSION}",
-                    f"https://archive.org/details/osf-registrations-ec9db-{ID_VERSION}",
-                ],
                 "registry": "OSF Registries",
                 "registration_schema": "Open-Ended Registration",
-                "registered_from": "http://localhost:8000/v2/nodes/g752b/",
+                "registered_from": "http://localhost:5000/g752b",
+                "authors": ["John Tordoff"],
                 "affiliated_institutions": ["The Center For Open Science [Stage]"],
-                "parent": "https://archive.org/details/osf-registrations-dgkjr-local_v1",
+                "subjects": ["Life Sciences"],
+                "children": [
+                    "https://archive.org/details/osf-registrations-hu68d-staging_v1",
+                    "https://archive.org/details/osf-registrations-puxmb-staging_v1",
+                ],
+                "parent": "https://archive.org/details/osf-registrations-dgkjr-staging_v1",
+                "license": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
             },
             secret_key=settings.IA_SECRET_KEY,
             access_key=settings.IA_ACCESS_KEY,
@@ -511,6 +521,7 @@ class TestUpload:
         biblio_contribs,
         metadata,
         institutions_json,
+        subjects_json,
     ):
         """
         Different providers should get uploaded to different collections
@@ -519,14 +530,13 @@ class TestUpload:
 
         mock_osf_api.add(
             responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/8gqkv/children/"
-            f"?fields%5Bregistrations%5D=id",
+            f"{settings.OSF_API_URL}v2/registrations/8gqkv/children/",
             body=registration_children_sparse,
         )
         mock_osf_api.add(
             responses.GET,
             f"{settings.OSF_API_URL}v2/registrations/8gqkv/contributors/"
-            f"?filter%5Bbibliographic%5D=True",
+            f"?filter%5Bbibliographic%5D=true",
             body=biblio_contribs,
         )
         mock_osf_api.add(
@@ -537,8 +547,9 @@ class TestUpload:
         mock_osf_api.add(
             responses.GET,
             f"{settings.OSF_API_URL}v2/registrations/8gqkv/subjects/",
-            body=institutions_json,
+            body=subjects_json,
         )
+
         run(
             upload(
                 guid,
@@ -551,25 +562,26 @@ class TestUpload:
             mock.ANY,
             metadata={
                 "collection": f"collection-osf-registration-providers-burds-{ID_VERSION}",
+                "contributor": "Center for Open Science",
+                "registration_doi": "10.70102/osf.io/guid0",
                 "title": "Test Component",
                 "description": "Test Description",
-                "date_created": "2017-12-20",
-                "contributor": "Center for Open Science",
                 "category": "",
-                "license": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
                 "tags": [],
-                "contributors": ["John Tordoff"],
+                "date_created": "2017-12-20T16:03:47.327319Z",
                 "article_doi": "",
-                "registration_doi": "10.70102/osf.io/guid0",
-                "children": [
-                    f"https://archive.org/details/osf-registrations-hbs3p-{ID_VERSION}",
-                    f"https://archive.org/details/osf-registrations-ec9db-{ID_VERSION}",
-                ],
                 "registry": "OSF Registries",
                 "registration_schema": "Open-Ended Registration",
-                "registered_from": "http://localhost:8000/v2/nodes/g752b/",
+                "registered_from": "http://localhost:5000/g752b",
+                "authors": ["John Tordoff"],
                 "affiliated_institutions": ["The Center For Open Science [Stage]"],
-                "parent": "https://archive.org/details/osf-registrations-dgkjr-local_v1",
+                "subjects": ["Life Sciences"],
+                "children": [
+                    "https://archive.org/details/osf-registrations-hu68d-staging_v1",
+                    "https://archive.org/details/osf-registrations-puxmb-staging_v1",
+                ],
+                "parent": "https://archive.org/details/osf-registrations-dgkjr-staging_v1",
+                "license": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
             },
             secret_key=settings.IA_SECRET_KEY,
             access_key=settings.IA_ACCESS_KEY,

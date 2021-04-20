@@ -88,7 +88,7 @@ async def get_metadata_for_ia_item(json_metadata):
     relationship_data = [
         get_relationship_attribute(
             "authors",
-            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/contributors/?filter[bibliographic]=True',
+            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/contributors/?filter[bibliographic]=true',
             lambda contrib: contrib["embeds"]["users"]["data"]["attributes"][
                 "full_name"
             ],
@@ -118,7 +118,9 @@ async def get_metadata_for_ia_item(json_metadata):
 
     parent = json_metadata["data"]["relationships"]["parent"]["data"]
     if parent:
-        relationship_data["parent"] = f"https://archive.org/details/{REG_ID_TEMPLATE.format(guid=parent['id'])}"
+        relationship_data[
+            "parent"
+        ] = f"https://archive.org/details/{REG_ID_TEMPLATE.format(guid=parent['id'])}"
 
     embeds = json_metadata["data"]["embeds"]
 
@@ -164,7 +166,7 @@ async def write_datacite_metadata(guid, temp_dir, metadata):
         doi = next(
             (
                 identifier["attributes"]["value"]
-                for identifier in metadata['data']['embeds']["identifiers"]["data"]
+                for identifier in metadata["data"]["embeds"]["identifiers"]["data"]
                 if identifier["attributes"]["category"] == "doi"
             )
         )
@@ -290,7 +292,12 @@ def sync_metadata(guid, metadata):
 
     item_name = REG_ID_TEMPLATE.format(guid=guid)
     ia_item = get_ia_item(item_name)
-    if metadata.get("moderation_state") == "withdrawn":  # withdrawn == not searchable
+    if (
+        not metadata.get("moderation_state") == "withdrawn"
+    ):  # withdrawn == not searchable
+        ia_item.modify_metadata(metadata)
+
+    else:
         description = ia_item.metadata.get("description")
         if description:
             metadata[
@@ -299,9 +306,8 @@ def sync_metadata(guid, metadata):
         else:
             metadata["description"] = "This registration has been withdrawn"
 
-        metadata["noindex"] = True
-
-    ia_item.modify_metadata(metadata)
+        ia_item.modify_metadata(metadata)
+        ia_item.modify_metadata({"noindex": True})
 
     return ia_item, list(metadata.keys())
 
