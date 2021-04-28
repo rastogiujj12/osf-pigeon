@@ -5,3 +5,4 @@ ratelimit==2.2.1
 requests==2.25.1
 Sanic==21.3.2
 raven
+blinker

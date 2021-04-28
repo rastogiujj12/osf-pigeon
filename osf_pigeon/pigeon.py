@@ -84,10 +84,15 @@ async def get_metadata_for_ia_item(json_metadata):
         - license
         - parent
         - subjects
+
+    Internet Archive advises that all metadata that points to internal OSF features should have a specific `osf_`
+    prefix. Example: `registry` should be `osf_registry`, however metadata such as affiliated_institutions is
+    self-explanatory and doesn't need a prefix.
+
     """
     relationship_data = [
         get_relationship_attribute(
-            "authors",
+            "creator",
             f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/contributors/?filter[bibliographic]=true',
             lambda contrib: contrib["embeds"]["users"]["data"]["attributes"][
                 "full_name"
@@ -99,7 +104,7 @@ async def get_metadata_for_ia_item(json_metadata):
             lambda institution: institution["attributes"]["name"],
         ),
         get_relationship_attribute(
-            "subjects",
+            "osf_subjects",
             f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/subjects/',
             lambda subject: subject["attributes"]["text"],
         ),
@@ -140,23 +145,22 @@ async def get_metadata_for_ia_item(json_metadata):
     attributes = json_metadata["data"]["attributes"]
     article_doi = json_metadata["data"]["attributes"]["article_doi"]
     ia_metadata = {
-        "contributor": "Center for Open Science",
+        "publisher": "Center for Open Science",
         "registration_doi": doi,
         "title": attributes["title"],
         "description": attributes["description"],
-        "category": attributes["category"],
-        "tags": attributes["tags"],
-        "date_created": attributes["date_created"],
+        "osf_category": attributes["category"],
+        "osf_tags": attributes["tags"],
+        "date": str(datetime.strptime(attributes["date_created"], '%Y-%m-%dT%H:%M:%S.%fZ').date()),
         "article_doi": f"urn:doi:{article_doi}" if article_doi else "",
-        "registry": embeds["provider"]["data"]["attributes"]["name"],
-        "registration_schema": embeds["registration_schema"]["data"]["attributes"][
+        "osf_registry": embeds["provider"]["data"]["attributes"]["name"],
+        "osf_registration_schema": embeds["registration_schema"]["data"]["attributes"][
             "name"
         ],
-        "registered_from": osf_url
+        "source": osf_url
         + json_metadata["data"]["relationships"]["registered_from"]["data"]["id"],
         **relationship_data,
     }
-
     return ia_metadata
 
 
@@ -306,6 +310,7 @@ def sync_metadata(guid, metadata):
         else:
             metadata["description"] = "This registration has been withdrawn"
 
+        del metadata["moderation_state"]
         ia_item.modify_metadata(metadata)
         ia_item.modify_metadata({"noindex": True})
 

@@ -344,22 +344,22 @@ class TestMetadata:
         assert metadata == {
             "title": "Test Component",
             "description": "Test Description",
-            "date_created": "2017-12-20T16:03:47.327319Z",
-            "contributor": "Center for Open Science",
-            "category": "",
+            "date": "2017-12-20",
+            "publisher": "Center for Open Science",
+            "osf_category": "",
             "license": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
-            "tags": [],
-            "authors": ["John Tordoff"],
-            "subjects": ["Life Sciences"],
+            "osf_tags": [],
+            "creator": ["John Tordoff"],
+            "osf_subjects": ["Life Sciences"],
             "article_doi": "",
             "registration_doi": "10.70102/osf.io/guid0",
             "children": [
                 f"https://archive.org/details/osf-registrations-hu68d-{ID_VERSION}",
                 f"https://archive.org/details/osf-registrations-puxmb-{ID_VERSION}",
             ],
-            "registry": "OSF Registries",
-            "registration_schema": "Open-Ended Registration",
-            "registered_from": "http://localhost:5000/g752b",
+            "osf_registry": "OSF Registries",
+            "osf_registration_schema": "Open-Ended Registration",
+            "source": "http://localhost:5000/g752b",
             "affiliated_institutions": ["The Center For Open Science [Stage]"],
             "parent": f"https://archive.org/details/osf-registrations-dgkjr-{ID_VERSION}",
         }
@@ -394,7 +394,9 @@ class TestMetadata:
         metadata[
             "description"
         ] = "Note this registration has been withdrawn: \nTest Description"
-        mock_ia_client.item.modify_metadata.assert_called_with(metadata)
+
+        mock_ia_client.item.modify_metadata.assert_any_call({'noindex': True})
+        mock_ia_client.item.modify_metadata.assert_any_call(metadata)
 
 
 class TestUpload:
@@ -486,20 +488,20 @@ class TestUpload:
             mock.ANY,
             metadata={
                 "collection": f"collection-osf-registration-providers-osf-{ID_VERSION}",
-                "contributor": "Center for Open Science",
+                "publisher": "Center for Open Science",
                 "registration_doi": "10.70102/osf.io/guid0",
                 "title": "Test Component",
                 "description": "Test Description",
-                "category": "",
-                "tags": [],
-                "date_created": "2017-12-20T16:03:47.327319Z",
+                "osf_category": "",
+                "osf_tags": [],
+                "date": "2017-12-20",
                 "article_doi": "",
-                "registry": "OSF Registries",
-                "registration_schema": "Open-Ended Registration",
-                "registered_from": "http://localhost:5000/g752b",
-                "authors": ["John Tordoff"],
+                "osf_registry": "OSF Registries",
+                "osf_registration_schema": "Open-Ended Registration",
+                "source": "http://localhost:5000/g752b",
+                "creator": ["John Tordoff"],
                 "affiliated_institutions": ["The Center For Open Science [Stage]"],
-                "subjects": ["Life Sciences"],
+                "osf_subjects": ["Life Sciences"],
                 "children": [
                     "https://archive.org/details/osf-registrations-hu68d-staging_v1",
                     "https://archive.org/details/osf-registrations-puxmb-staging_v1",
@@ -562,20 +564,20 @@ class TestUpload:
             mock.ANY,
             metadata={
                 "collection": f"collection-osf-registration-providers-burds-{ID_VERSION}",
-                "contributor": "Center for Open Science",
+                "publisher": "Center for Open Science",
                 "registration_doi": "10.70102/osf.io/guid0",
                 "title": "Test Component",
                 "description": "Test Description",
-                "category": "",
-                "tags": [],
-                "date_created": "2017-12-20T16:03:47.327319Z",
+                "osf_category": "",
+                "osf_tags": [],
+                "date": "2017-12-20",
                 "article_doi": "",
-                "registry": "OSF Registries",
-                "registration_schema": "Open-Ended Registration",
-                "registered_from": "http://localhost:5000/g752b",
-                "authors": ["John Tordoff"],
+                "osf_registry": "OSF Registries",
+                "osf_registration_schema": "Open-Ended Registration",
+                "source": "http://localhost:5000/g752b",
+                "creator": ["John Tordoff"],
                 "affiliated_institutions": ["The Center For Open Science [Stage]"],
-                "subjects": ["Life Sciences"],
+                "osf_subjects": ["Life Sciences"],
                 "children": [
                     "https://archive.org/details/osf-registrations-hu68d-staging_v1",
                     "https://archive.org/details/osf-registrations-puxmb-staging_v1",
