@@ -317,10 +317,11 @@ def sync_metadata(guid, metadata):
     if not metadata:
         return
 
-    valid_metadata_keys = [
+    valid_updatable_metadata_keys = [
         "title",
         "description",
         "date",
+        "modified",
         "category",
         "subjects",
         "tags",
@@ -330,11 +331,11 @@ def sync_metadata(guid, metadata):
         "moderation_state",
     ]
 
-    invalid_keys = set(metadata.keys()).difference(set(valid_metadata_keys))
+    invalid_keys = set(metadata.keys()).difference(set(valid_updatable_metadata_keys))
     if invalid_keys:
         raise SanicException(
-            f"Metadata payload contained invalid tag(s) {', '.join(list(invalid_keys))}"
-            f" not included in valid keys:{', '.join(valid_metadata_keys)}.",
+            f"Metadata payload contained invalid tag(s): `{', '.join(list(invalid_keys))}`"
+            f" not included in valid keys: `{', '.join(valid_updatable_metadata_keys)}`.",
             status_code=400,
         )
 
@@ -349,7 +350,6 @@ def sync_metadata(guid, metadata):
         if key in metadata:
             metadata[f"osf_{key}"] = metadata.pop(key)
 
-    print(metadata)
     item_name = REG_ID_TEMPLATE.format(guid=guid)
     ia_item = get_ia_item(item_name)
     if (
