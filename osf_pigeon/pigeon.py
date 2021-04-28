@@ -19,6 +19,7 @@ import zipfile
 import bagit
 from ratelimit import sleep_and_retry
 from ratelimit.exception import RateLimitException
+from sanic.exceptions import SanicException
 
 REG_ID_TEMPLATE = f"osf-registrations-{{guid}}-{settings.ID_VERSION}"
 PROVIDER_ID_TEMPLATE = (
@@ -65,30 +66,29 @@ async def get_metadata_for_ia_item(json_metadata):
     :param json_metadata: metadata from OSF registration view contains attributes and relationship
     urls.
 
-    :return: ia_metadata the metadata for an IA bucket. Should include the following if they are
-     not null:
-        - title
-        - description
-        - date_created
-        - contributor
-        - category
-        - tags
-        - authors (biblographic contributors, IA uses the keyword contributor)
-        - article_doi
-        - registration_doi
-        - children
-        - registry
-        - registration_schema
-        - registered_from
-        - affiliated_institutions
-        - license
-        - parent
-        - subjects
-
-    Internet Archive advises that all metadata that points to internal OSF features should have a specific `osf_`
+    Note: Internet Archive advises that all metadata that points to internal OSF features should have a specific `osf_`
     prefix. Example: `registry` should be `osf_registry`, however metadata such as affiliated_institutions is
     self-explanatory and doesn't need a prefix.
 
+    :return: ia_metadata the metadata for an IA bucket. Should include the following if they are
+     not null:
+        - publisher
+        - title
+        - description
+        - date
+        - osf_category
+        - osf_subjects
+        - osf_tags
+        - osf_registration_doi
+        - osf_registry
+        - osf_registration_schema
+        - creator (biblographic contributors, IA recommended this keyword)
+        - article_doi
+        - parent
+        - children
+        - source
+        - affiliated_institutions
+        - license
     """
     relationship_data = [
         get_relationship_attribute(
@@ -146,12 +146,16 @@ async def get_metadata_for_ia_item(json_metadata):
     article_doi = json_metadata["data"]["attributes"]["article_doi"]
     ia_metadata = {
         "publisher": "Center for Open Science",
-        "registration_doi": doi,
+        "osf_registration_doi": doi,
         "title": attributes["title"],
         "description": attributes["description"],
         "osf_category": attributes["category"],
         "osf_tags": attributes["tags"],
-        "date": str(datetime.strptime(attributes["date_created"], '%Y-%m-%dT%H:%M:%S.%fZ').date()),
+        "date": str(
+            datetime.strptime(
+                attributes["date_created"], "%Y-%m-%dT%H:%M:%S.%fZ"
+            ).date()
+        ),
         "article_doi": f"urn:doi:{article_doi}" if article_doi else "",
         "osf_registry": embeds["provider"]["data"]["attributes"]["name"],
         "osf_registration_schema": embeds["registration_schema"]["data"]["attributes"][
@@ -291,9 +295,61 @@ def get_ia_item(guid):
 
 
 def sync_metadata(guid, metadata):
+    """
+    This is used to sync the metadata of archive.org items with OSF Registrations. The OSF metadata actively being
+    synced is as follows:
+        - title
+        - description
+        - date
+        - category
+        - subjects
+        - tags
+        - affiliated_institutions
+        - license
+        - article_doi
+
+    `moderation_state` is an allowable key, but only to determine a withdrawal status of a registration.
+    :param guid:
+    :param metadata:
+    :return:
+    """
+
     if not metadata:
         return
 
+    valid_metadata_keys = [
+        "title",
+        "description",
+        "date",
+        "category",
+        "subjects",
+        "tags",
+        "article_doi",
+        "affiliated_institutions",
+        "license",
+        "moderation_state",
+    ]
+
+    invalid_keys = set(metadata.keys()).difference(set(valid_metadata_keys))
+    if invalid_keys:
+        raise SanicException(
+            f"Metadata payload contained invalid tag(s) {', '.join(list(invalid_keys))}"
+            f" not included in valid keys:{', '.join(valid_metadata_keys)}.",
+            status_code=400,
+        )
+
+    # remap these with `osf_` prefix for IA
+    keys = [
+        "category",
+        "subjects",
+        "tags",
+        "article_doi",
+    ]
+    for key in keys:
+        if key in metadata:
+            metadata[f"osf_{key}"] = metadata.pop(key)
+
+    print(metadata)
     item_name = REG_ID_TEMPLATE.format(guid=guid)
     ia_item = get_ia_item(item_name)
     if (

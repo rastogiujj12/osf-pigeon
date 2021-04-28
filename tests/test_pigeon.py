@@ -352,7 +352,7 @@ class TestMetadata:
             "creator": ["John Tordoff"],
             "osf_subjects": ["Life Sciences"],
             "article_doi": "",
-            "registration_doi": "10.70102/osf.io/guid0",
+            "osf_registration_doi": "10.70102/osf.io/guid0",
             "children": [
                 f"https://archive.org/details/osf-registrations-hu68d-{ID_VERSION}",
                 f"https://archive.org/details/osf-registrations-puxmb-{ID_VERSION}",
@@ -369,7 +369,6 @@ class TestMetadata:
             "title": "Test Component",
             "description": "Test Description",
             "date": "2017-12-20",
-            "contributor": "Center for Open Science",
         }
         sync_metadata(guid, metadata)
         mock_ia_client.session.get_item.assert_called_with(
@@ -382,7 +381,6 @@ class TestMetadata:
             "title": "Test Component",
             "description": "Test Description",
             "date": "2017-12-20",
-            "contributor": "Center for Open Science",
             "moderation_state": "withdrawn",
         }
         sync_metadata(guid, metadata)
@@ -395,7 +393,7 @@ class TestMetadata:
             "description"
         ] = "Note this registration has been withdrawn: \nTest Description"
 
-        mock_ia_client.item.modify_metadata.assert_any_call({'noindex': True})
+        mock_ia_client.item.modify_metadata.assert_any_call({"noindex": True})
         mock_ia_client.item.modify_metadata.assert_any_call(metadata)
 
 
@@ -489,7 +487,7 @@ class TestUpload:
             metadata={
                 "collection": f"collection-osf-registration-providers-osf-{ID_VERSION}",
                 "publisher": "Center for Open Science",
-                "registration_doi": "10.70102/osf.io/guid0",
+                "osf_registration_doi": "10.70102/osf.io/guid0",
                 "title": "Test Component",
                 "description": "Test Description",
                 "osf_category": "",
@@ -565,7 +563,7 @@ class TestUpload:
             metadata={
                 "collection": f"collection-osf-registration-providers-burds-{ID_VERSION}",
                 "publisher": "Center for Open Science",
-                "registration_doi": "10.70102/osf.io/guid0",
+                "osf_registration_doi": "10.70102/osf.io/guid0",
                 "title": "Test Component",
                 "description": "Test Description",
                 "osf_category": "",
