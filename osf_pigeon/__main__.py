@@ -1,14 +1,17 @@
 import os
+import logging
 import argparse
 import requests
 from sanic import Sanic
-from sanic.response import json
+from sanic.response import json, html
 from osf_pigeon import pigeon
 from concurrent.futures import ThreadPoolExecutor
 from sanic.log import logger
 from osf_pigeon import settings
 from raven import Client
 
+
+logging.basicConfig(filename='pigeon.log', level=logging.WARNING)
 app = Sanic("osf_pigeon")
 pigeon_jobs = ThreadPoolExecutor(max_workers=10, thread_name_prefix="pigeon_jobs")
 
@@ -46,6 +49,12 @@ async def index(request):
     return json({"🐦": "👍"})
 
 
+@app.route("/logs")
+async def index(request):
+    with open('pigeon.log') as fp:
+        return html(f'<pre>{"".join(fp.readlines())}</pre>')
+
+
 @app.route("/archive/<guid>", methods=["GET", "POST"])
 async def archive(request, guid):
     future = pigeon_jobs.submit(pigeon.run, pigeon.archive(guid))
@@ -73,6 +82,6 @@ if __name__ == "__main__":
         os.environ["ENV"] = args.env
 
     if args.env == "production":
-        app.run(host=settings.HOST, port=settings.PORT)
+        app.run(host=settings.HOST, port=settings.PORT, access_log=False)
     else:
-        app.run(host=settings.HOST, port=settings.PORT, auto_reload=True, debug=True)
+        app.run(host=settings.HOST, port=settings.PORT, auto_reload=True, debug=True, access_log=False)
