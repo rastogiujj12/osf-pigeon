@@ -3,7 +3,7 @@ import logging
 import argparse
 import requests
 from sanic import Sanic
-from sanic.response import json, html
+from sanic.response import json, file
 from osf_pigeon import pigeon
 from concurrent.futures import ThreadPoolExecutor
 from sanic.log import logger
@@ -11,12 +11,18 @@ from osf_pigeon import settings
 from raven import Client
 
 
-logging.basicConfig(filename='pigeon.log', level=logging.WARNING)
 app = Sanic("osf_pigeon")
-pigeon_jobs = ThreadPoolExecutor(max_workers=10, thread_name_prefix="pigeon_jobs")
+logging.basicConfig(filename='pigeon.log', level=logging.WARNING)
+
+pigeon_jobs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pigeon_jobs")
 
 if settings.SENTRY_DSN:
     sentry = Client(dsn=settings.SENTRY_DSN)
+
+
+@app.route("/logs")
+async def logs(request):
+    return await file('pigeon.log')
 
 
 def handle_exception(future):
@@ -25,7 +31,7 @@ def handle_exception(future):
         if settings.SENTRY_DSN:
             sentry = Client(dsn=settings.SENTRY_DSN)
             sentry.captureMessage(str(exception))
-        logger.error(exception)
+        logger.debug(exception)
 
 
 def archive_task_done(future):
@@ -44,17 +50,6 @@ def metadata_task_done(future):
         logger.debug(f"{ia_item.urls.details} Updated:{updated_metadata}")
 
 
-@app.route("/")
-async def index(request):
-    return json({"🐦": "👍"})
-
-
-@app.route("/logs")
-async def index(request):
-    with open('pigeon.log') as fp:
-        return html(f'<pre>{"".join(fp.readlines())}</pre>')
-
-
 @app.route("/archive/<guid>", methods=["GET", "POST"])
 async def archive(request, guid):
     future = pigeon_jobs.submit(pigeon.run, pigeon.archive(guid))
@@ -70,6 +65,12 @@ async def set_metadata(request, guid):
     future.add_done_callback(metadata_task_done)
     return json({guid: future._state})
 
+
+@app.route("/")
+async def index(request):
+    return json({"🐦": "👍"})
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Set the environment to run OSF pigeon in."
@@ -84,4 +85,10 @@ if __name__ == "__main__":
     if args.env == "production":
         app.run(host=settings.HOST, port=settings.PORT, access_log=False)
     else:
-        app.run(host=settings.HOST, port=settings.PORT, auto_reload=True, debug=True, access_log=False)
+        app.run(
+            host=settings.HOST,
+            port=settings.PORT,
+            auto_reload=True,
+            debug=True,
+            access_log=False,
+        )

@@ -1,5 +1,4 @@
 services:
-
   pigeon:
     build: .
     restart: unless-stopped

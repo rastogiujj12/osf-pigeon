@@ -373,37 +373,6 @@ def sync_metadata(guid, metadata):
     return ia_item, list(metadata.keys())
 
 
-def create_subcollection(collection_id, metadata=None, parent_collection=None):
-    """
-    The expected sub-collection hierarchy is as follows top-level OSF collection -> provider
-    collection -> collection for nodes with multiple children -> all only child nodes
-
-    :param collection_id: the IA item name for the collections to be created
-    :param metadata: dict should attributes for the provider's sub-collection is being created
-    :param parent_collection: str the name of the  sub-collection's parent
-
-    :return:
-    """
-    if metadata is None:
-        metadata = {}
-
-    session = internetarchive.get_session(
-        config={
-            "s3": {"access": settings.IA_ACCESS_KEY, "secret": settings.IA_SECRET_KEY},
-        },
-    )
-
-    collection = internetarchive.Item(session, collection_id)
-    collection.upload(
-        files={"dummy.txt": BytesIO(b"dummy")},
-        metadata={
-            "mediatype": "collection",
-            "collection": parent_collection,
-            **metadata,
-        },
-    )
-
-
 async def upload(item_name, data, metadata):
     ia_item = get_ia_item(item_name)
     ia_metadata = await get_metadata_for_ia_item(metadata)
