@@ -14,7 +14,7 @@ from raven import Client
 app = Sanic("osf_pigeon")
 logging.basicConfig(filename='pigeon.log', level=logging.WARNING)
 
-pigeon_jobs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pigeon_jobs")
+pigeon_jobs = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pigeon_jobs")
 
 if settings.SENTRY_DSN:
     sentry = Client(dsn=settings.SENTRY_DSN)

@@ -93,7 +93,7 @@ async def get_metadata_for_ia_item(json_metadata):
     relationship_data = [
         get_relationship_attribute(
             "creator",
-            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/contributors/?filter[bibliographic]=true',
+            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/contributors/?filter[bibliographic]=true&',
             lambda contrib: contrib["embeds"]["users"]["data"]["attributes"][
                 "full_name"
             ],
