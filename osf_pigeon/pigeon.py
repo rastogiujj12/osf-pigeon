@@ -56,7 +56,10 @@ def create_zip_data(temp_dir):
 
 
 async def get_relationship_attribute(key, url, func):
-    return {key: list(map(func, (await get_paginated_data(url))["data"]))}
+    data = await get_paginated_data(url)
+    if "data" in data:
+        return {key: list(map(func, data["data"]))}
+    return {key: list(map(func, data))}
 
 
 async def get_metadata_for_ia_item(json_metadata):
@@ -460,7 +463,11 @@ async def archive(guid):
             tasks.append(get_raw_data(guid, temp_dir))
 
         await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
-        bagit.make_bag(temp_dir)
+        try:
+            bagit.make_bag(temp_dir)
+        except FileNotFoundError:
+            raise SanicException("temp bag file not found")
+
         bag = bagit.Bag(temp_dir)
         assert bag.is_valid()
 

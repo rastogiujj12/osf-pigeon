@@ -3,7 +3,7 @@ import logging
 import argparse
 import requests
 from sanic import Sanic
-from sanic.response import json, file
+from sanic.response import json, file, text
 from osf_pigeon import pigeon
 from concurrent.futures import ThreadPoolExecutor
 from sanic.log import logger
@@ -12,9 +12,8 @@ from raven import Client
 
 
 app = Sanic("osf_pigeon")
-logging.basicConfig(filename='pigeon.log', level=logging.WARNING)
-
-pigeon_jobs = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pigeon_jobs")
+logging.basicConfig(filename="pigeon.log", level=logging.DEBUG)
+pigeon_jobs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pigeon_jobs")
 
 if settings.SENTRY_DSN:
     sentry = Client(dsn=settings.SENTRY_DSN)
@@ -22,7 +21,10 @@ if settings.SENTRY_DSN:
 
 @app.route("/logs")
 async def logs(request):
-    return await file('pigeon.log')
+    try:
+        return await file("pigeon.log")
+    except FileNotFoundError:
+        return text("pigeon.log not found")
 
 
 def handle_exception(future):
