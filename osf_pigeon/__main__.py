@@ -2,38 +2,25 @@ import os
 import logging
 import argparse
 import requests
-from sanic import Sanic
-from sanic.response import json, file, text
 from osf_pigeon import pigeon
 from concurrent.futures import ThreadPoolExecutor
-from sanic.log import logger
 from osf_pigeon import settings
+from aiohttp import web
+
 from raven import Client
-
-
-app = Sanic("osf_pigeon")
-logging.basicConfig(filename="pigeon.log", level=logging.DEBUG)
-pigeon_jobs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pigeon_jobs")
-
-if settings.SENTRY_DSN:
-    sentry = Client(dsn=settings.SENTRY_DSN)
-
-
-@app.route("/logs")
-async def logs(request):
-    try:
-        return await file("pigeon.log")
-    except FileNotFoundError:
-        return text("pigeon.log not found")
+pigeon_jobs = ThreadPoolExecutor(max_workers=10, thread_name_prefix="pigeon_jobs")
+app = web.Application()
+routes = web.RouteTableDef()
+logging.basicConfig(filename='pigeon.log', level=logging.DEBUG)
 
 
 def handle_exception(future):
     exception = future.exception()
     if exception:
+        app.logger.exception(exception)
         if settings.SENTRY_DSN:
             sentry = Client(dsn=settings.SENTRY_DSN)
             sentry.captureMessage(str(exception))
-        logger.debug(exception)
 
 
 def archive_task_done(future):
@@ -43,34 +30,44 @@ def archive_task_done(future):
             f"{settings.OSF_API_URL}_/ia/{guid}/done/",
             json={"ia_url": ia_item.urls.details},
         )
-        logger.debug(f"{ia_item.urls.details} Callback status:{resp}")
+        app.logger.info(f'{ia_item} called back with {resp}')
 
 
 def metadata_task_done(future):
     if future._result and not future._exception:
         ia_item, updated_metadata = future.result()
-        logger.debug(f"{ia_item.urls.details} Updated:{updated_metadata}")
+        app.logger.info(f'{ia_item} updated metadata {updated_metadata}')
 
 
-@app.route("/archive/<guid>", methods=["GET", "POST"])
-async def archive(request, guid):
+@routes.get("/")
+async def index(request):
+    return web.json_response({"🐦": "👍"})
+
+
+@routes.get("/logs")
+async def logs(request):
+    return web.FileResponse('pigeon.log')
+
+
+
+@routes.get("/archive/{guid}")
+@routes.post("/archive/{guid}")
+async def archive(request):
+    guid = request.match_info['guid']
     future = pigeon_jobs.submit(pigeon.run, pigeon.archive(guid))
     future.add_done_callback(handle_exception)
     future.add_done_callback(archive_task_done)
-    return json({guid: future._state})
+    return web.json_response({guid: future._state})
 
 
-@app.route("/metadata/<guid>", methods=["POST"])
-async def set_metadata(request, guid):
-    future = pigeon_jobs.submit(pigeon.sync_metadata, guid, request.json)
+@routes.post("/metadata/{guid}")
+async def set_metadata(request):
+    guid = request.match_info['guid']
+    metadata = await request.json()
+    future = pigeon_jobs.submit(pigeon.sync_metadata, guid, metadata)
     future.add_done_callback(handle_exception)
     future.add_done_callback(metadata_task_done)
-    return json({guid: future._state})
-
-
-@app.route("/")
-async def index(request):
-    return json({"🐦": "👍"})
+    return web.json_response({guid: future._state})
 
 
 if __name__ == "__main__":
@@ -84,13 +81,5 @@ if __name__ == "__main__":
     if args.env:
         os.environ["ENV"] = args.env
 
-    if args.env == "production":
-        app.run(host=settings.HOST, port=settings.PORT, access_log=False)
-    else:
-        app.run(
-            host=settings.HOST,
-            port=settings.PORT,
-            auto_reload=True,
-            debug=True,
-            access_log=False,
-        )
+    app.add_routes(routes)
+    web.run_app(app, host=settings.HOST, port=settings.PORT)

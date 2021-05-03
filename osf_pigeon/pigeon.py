@@ -19,7 +19,7 @@ import zipfile
 import bagit
 from ratelimit import sleep_and_retry
 from ratelimit.exception import RateLimitException
-from sanic.exceptions import SanicException
+
 
 REG_ID_TEMPLATE = f"osf-registrations-{{guid}}-{settings.ID_VERSION}"
 PROVIDER_ID_TEMPLATE = (
@@ -433,6 +433,7 @@ async def archive(guid):
     ) as temp_dir:
         # await first to check if withdrawn
         metadata = await get_registration_metadata(guid, temp_dir, "registration.json")
+
         tasks = [
             write_datacite_metadata(guid, temp_dir, metadata),
             get_and_write_json_to_temp(
@@ -463,11 +464,8 @@ async def archive(guid):
             tasks.append(get_raw_data(guid, temp_dir))
 
         await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
-        try:
-            bagit.make_bag(temp_dir)
-        except FileNotFoundError:
-            raise SanicException("temp bag file not found")
 
+        bagit.make_bag(temp_dir)
         bag = bagit.Bag(temp_dir)
         assert bag.is_valid()
 

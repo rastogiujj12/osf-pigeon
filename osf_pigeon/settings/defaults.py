@@ -43,6 +43,6 @@ ENV = {
         "DATACITE_URL": "https://mds.test.datacite.org/",
         "DOI_FORMAT": "{prefix}/fk2osf.io/{guid}",
         "OSF_COLLECTION_NAME": "cos-dev-sandbox",
-        "ID_VERSION": "local_v1",
+        "ID_VERSION": "staging_v1",
     },
 }
