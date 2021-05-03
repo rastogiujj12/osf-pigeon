@@ -428,9 +428,7 @@ async def get_raw_data(guid, temp_dir):
 
 
 async def archive(guid):
-    with tempfile.TemporaryDirectory(
-        prefix=REG_ID_TEMPLATE.format(guid=guid)
-    ) as temp_dir:
+    with tempfile.TemporaryDirectory(dir=settings.PIGEON_TEMP_DIR, prefix=REG_ID_TEMPLATE.format(guid=guid)) as temp_dir:
         # await first to check if withdrawn
         metadata = await get_registration_metadata(guid, temp_dir, "registration.json")
 
