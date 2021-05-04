@@ -11,9 +11,6 @@ except ImportError:
         ImportWarning,
     )
 
-
-os.environ['ENV'] = 'staging'
-
 if os.environ.get("ENV"):
     locals().update(ENV[os.environ.get("ENV")])
 else:

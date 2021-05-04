@@ -11,7 +11,9 @@ IA_ACCESS_KEY = os.environ.get("IA_ACCESS_KEY")
 IA_SECRET_KEY = os.environ.get("IA_SECRET_KEY")
 DATACITE_PREFIX = "10.17605"
 
-PIGEON_TEMP_DIR = os.environ.get('PIGEON_TEMP_DIR', None)  # setting to None allows tempfile.py to decide
+PIGEON_TEMP_DIR = os.environ.get(
+    "PIGEON_TEMP_DIR", None
+)  # setting to None allows tempfile.py to decide
 
 HOST = "0.0.0.0"
 
@@ -45,6 +47,6 @@ ENV = {
         "DATACITE_URL": "https://mds.test.datacite.org/",
         "DOI_FORMAT": "{prefix}/fk2osf.io/{guid}",
         "OSF_COLLECTION_NAME": "cos-dev-sandbox",
-        "ID_VERSION": "staging_v1",
+        "ID_VERSION": "local_v1",
     },
 }

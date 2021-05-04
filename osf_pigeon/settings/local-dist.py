@@ -8,8 +8,8 @@ OSF_BEARER_TOKEN = os.environ.get("OSF_BEARER_TOKEN")
 IA_ACCESS_KEY = os.environ.get("IA_ACCESS_KEY")
 IA_SECRET_KEY = os.environ.get("IA_SECRET_KEY")
 
-OSF_API_URL = "http://localhost:8000/"
-OSF_FILES_URL = "http://localhost:7777/"
+OSF_API_URL = "http://192.168.168.167:8000/"
+OSF_FILES_URL = "http://192.168.168.167:7777/"
 DATACITE_PREFIX = "10.70102"
 DATACITE_URL = "https://mds.test.datacite.org/"
 DOI_FORMAT = "{prefix}/fk2osf.io/{guid}"
