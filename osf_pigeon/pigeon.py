@@ -1,5 +1,4 @@
 import re
-import time
 import json
 import os
 from io import BytesIO
@@ -9,7 +8,6 @@ from asyncio import events
 
 import tempfile
 import math
-import asyncio
 import requests
 
 from datacite import DataCiteMDSClient
@@ -20,7 +18,7 @@ import zipfile
 import bagit
 from ratelimit import sleep_and_retry
 from ratelimit.exception import RateLimitException
-from aiohttp import http_exceptions, ClientSession, ClientTimeout
+from aiohttp import http_exceptions
 from aiohttp.log import server_logger
 
 REG_ID_TEMPLATE = f"osf-registrations-{{guid}}-{settings.ID_VERSION}"
@@ -28,13 +26,17 @@ PROVIDER_ID_TEMPLATE = (
     f"osf-registration-providers-{{provider_id}}-{settings.ID_VERSION}"
 )
 
+from aiohttp import ClientSession
+import asyncio
 
-def get_raw_data(from_url, to_dir, name):
+
+async def get_raw_data(from_url, to_dir, name):
     server_logger.info(f"downloading from to {from_url}")
-    with requests.get(from_url) as resp:
-        with open(os.path.join(to_dir, name), "wb") as fp:
-            for chunk in resp.content:
-                fp.write(chunk)
+    async with ClientSession() as session:
+        async with session.get(from_url, headers={'Connection': 'keep-alive'}) as resp:
+            with open(os.path.join(to_dir, name), "wb") as fp:
+                async for chunk in resp.content.iter_any():
+                    fp.write(chunk)
     server_logger.info(f"download from {from_url} complete")
 
 
@@ -250,7 +252,7 @@ async def get_contributors(response):
         institution_url = embed_data["relationships"]["institutions"]["links"][
             "related"
         ]["href"]
-        institution_data = (await get_with_retry(institution_url, retry_on=(429,)))[
+        institution_data = requests.get(institution_url).json()[
             "data"
         ]
         institution_list = [
@@ -441,11 +443,11 @@ async def archive(guid):
             "meta"
         ]["count"]
         if file_count:
-            get_raw_data(
+            tasks.append(get_raw_data(
                 from_url=f"{settings.OSF_FILES_URL}v1/resources/{guid}/providers/osfstorage/?zip=",
                 to_dir=temp_dir,
                 name="archived_files.zip"
-            )
+            ))
 
         await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
 

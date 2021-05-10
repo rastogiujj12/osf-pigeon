@@ -10,8 +10,3 @@ except ImportError:
         "copy local-dist.py to local.py?",
         ImportWarning,
     )
-
-if os.environ.get("ENV"):
-    locals().update(ENV[os.environ.get("ENV")])
-else:
-    locals().update(ENV["local"])

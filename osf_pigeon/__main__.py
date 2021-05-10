@@ -6,7 +6,6 @@ from osf_pigeon import pigeon
 from concurrent.futures import ThreadPoolExecutor
 from osf_pigeon import settings
 from aiohttp import web
-from aiohttp import log
 
 from raven import Client
 
@@ -72,17 +71,5 @@ async def set_metadata(request):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Set the environment to run OSF pigeon in."
-    )
-    parser.add_argument(
-        "--env",
-        dest="env",
-        help="The environment are you running this for: local, staging, production",
-    )
-    args = parser.parse_args()
-    if args.env:
-        os.environ["ENV"] = args.env
-
     app.add_routes(routes)
     web.run_app(app, host=settings.HOST, port=settings.PORT)
