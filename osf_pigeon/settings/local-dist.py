@@ -14,9 +14,7 @@ DATACITE_PREFIX = "10.70102"
 DATACITE_URL = "https://mds.test.datacite.org/"
 DOI_FORMAT = "{prefix}/fk2osf.io/{guid}"
 OSF_COLLECTION_NAME = "cos-dev-sandbox"
-VERSION_ID = "local_v1"
-REG_ID_TEMPLATE = f"osf-registrations-{{guid}}-{VERSION_ID}"
-PROVIDER_ID_TEMPLATE = f"collection-osf-registration-providers-{{guid}}-{VERSION_ID}"
+ID_VERSION = "local_v1"
 
 HOST = "0.0.0.0"
 PORT = 2020

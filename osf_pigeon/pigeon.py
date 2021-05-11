@@ -25,14 +25,25 @@ REG_ID_TEMPLATE = f"osf-registrations-{{guid}}-{settings.ID_VERSION}"
 PROVIDER_ID_TEMPLATE = (
     f"osf-registration-providers-{{provider_id}}-{settings.ID_VERSION}"
 )
+import struct
+
 
 from aiohttp import ClientSession
+from aiohttp.client_reqrep import ClientRequest
 import asyncio
+import socket
+
+
+class KeepAliveClientRequest(ClientRequest):
+    async def send(self, conn: "Connection") -> "ClientResponse":
+        sock = conn.protocol.transport.get_extra_info("socket")
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 0, 0))
+        return (await super().send(conn))
 
 
 async def get_raw_data(from_url, to_dir, name):
-    server_logger.info(f"downloading from to {from_url}")
-    async with ClientSession() as session:
+    server_logger.info(f"downloading from {from_url}")
+    async with ClientSession(request_class=KeepAliveClientRequest) as session:
         async with session.get(from_url, headers={'Connection': 'keep-alive'}) as resp:
             with open(os.path.join(to_dir, name), "wb") as fp:
                 async for chunk in resp.content.iter_any():
