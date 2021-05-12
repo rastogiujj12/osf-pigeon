@@ -30,12 +30,22 @@ from aiohttp import ClientSession, ClientTimeout
 import asyncio
 
 
-async def get_raw_data(from_url, to_dir, name):
+async def get_raw_data(from_url, to_dir, name, fp=None, session=None):
+    server_logger.info(f"downloading from {from_url} bytes {fp.tell() if fp else 0}")
+    if fp is None:
+        fp = open(os.path.join(to_dir, name), "wb")
+
     async with ClientSession(timeout=ClientTimeout(total=600)) as session:
         async with session.get(from_url, headers={'Connection': 'keep-alive'}) as resp:
-            with open(os.path.join(to_dir, name), "wb") as fp:
-                async for chunk in resp.content.iter_chunked(64000000):
+            await resp.content.read(fp.tell())
+            try:
+                async for chunk in resp.content.iter_any():
                     fp.write(chunk)
+            except aiohttp.client_exceptions.ClientPayloadError:
+                return await get_raw_data(from_url, to_dir, name, fp, session)
+
+
+    fp.close()
     server_logger.info(f"download from {from_url} complete")
 
 
@@ -447,7 +457,9 @@ async def archive(guid):
                 name="archived_files.zip"
             ))
 
-        await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+        print(done)
+        print(pending)
 
         bagit.make_bag(temp_dir)
         bag = bagit.Bag(temp_dir)
