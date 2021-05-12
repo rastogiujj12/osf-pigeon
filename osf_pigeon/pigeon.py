@@ -28,7 +28,7 @@ PROVIDER_ID_TEMPLATE = (
 import struct
 
 
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientTimeout
 from aiohttp.client_reqrep import ClientRequest
 import asyncio
 import socket
@@ -37,13 +37,16 @@ import socket
 class KeepAliveClientRequest(ClientRequest):
     async def send(self, conn: "Connection") -> "ClientResponse":
         sock = conn.protocol.transport.get_extra_info("socket")
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 0, 0))
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 60))
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 60)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 60)
         return (await super().send(conn))
 
 
 async def get_raw_data(from_url, to_dir, name):
     server_logger.info(f"downloading from {from_url}")
-    async with ClientSession(request_class=KeepAliveClientRequest) as session:
+    async with ClientSession(request_class=KeepAliveClientRequest, timeout=ClientTimeout(total=600)) as session:
         async with session.get(from_url, headers={'Connection': 'keep-alive'}) as resp:
             with open(os.path.join(to_dir, name), "wb") as fp:
                 async for chunk in resp.content.iter_any():
@@ -263,9 +266,8 @@ async def get_contributors(response):
         institution_url = embed_data["relationships"]["institutions"]["links"][
             "related"
         ]["href"]
-        institution_data = requests.get(institution_url).json()[
-            "data"
-        ]
+        data = await get_with_retry(institution_url)
+        institution_data = data['data']
         institution_list = [
             institution["attributes"]["name"] for institution in institution_data
         ]
