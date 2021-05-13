@@ -8,7 +8,7 @@ from asyncio import events
 
 import tempfile
 import math
-import requests
+import sys
 
 from datacite import DataCiteMDSClient
 from datacite.errors import DataCiteNotFoundError
@@ -25,27 +25,33 @@ REG_ID_TEMPLATE = f"osf-registrations-{{guid}}-{settings.ID_VERSION}"
 PROVIDER_ID_TEMPLATE = (
     f"osf-registration-providers-{{provider_id}}-{settings.ID_VERSION}"
 )
-import aiohttp
+import struct
+
+
 from aiohttp import ClientSession, ClientTimeout
+from aiohttp.client_reqrep import ClientRequest
 import asyncio
+import socket
 
 
-async def get_raw_data(from_url, to_dir, name, fp=None, session=None):
-    server_logger.info(f"downloading from {from_url} bytes {fp.tell() if fp else 0}")
-    if fp is None:
-        fp = open(os.path.join(to_dir, name), "wb")
+class KeepAliveClientRequest(ClientRequest):
+    async def send(self, conn: "Connection") -> "ClientResponse":
+        sock = conn.protocol.transport.get_extra_info("socket")
+        if sys.platform == 'linux':
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 2)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 5)
+        return (await super().send(conn))
 
-    async with ClientSession(timeout=ClientTimeout(total=600)) as session:
+
+async def get_raw_data(from_url, to_dir, name):
+    server_logger.info(f"downloading from {from_url} {sys.platform}")
+    async with ClientSession(request_class=KeepAliveClientRequest, timeout=ClientTimeout(total=600)) as session:
         async with session.get(from_url, headers={'Connection': 'keep-alive'}) as resp:
-            await resp.content.read(fp.tell())
-            try:
+            with open(os.path.join(to_dir, name), "wb") as fp:
                 async for chunk in resp.content.iter_any():
                     fp.write(chunk)
-            except aiohttp.client_exceptions.ClientPayloadError:
-                return await get_raw_data(from_url, to_dir, name, fp, session)
-
-
-    fp.close()
     server_logger.info(f"download from {from_url} complete")
 
 
