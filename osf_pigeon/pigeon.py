@@ -12,6 +12,7 @@ import sys
 
 from datacite import DataCiteMDSClient
 from datacite.errors import DataCiteNotFoundError
+import asyncio
 
 from osf_pigeon import settings
 import zipfile
@@ -227,6 +228,7 @@ async def get_with_retry(url, retry_on=(), sleep_period=None, headers=None):
                     or int(resp.headers.get("Retry-After") or 0),
                 )  # This will be caught by @sleep_and_retry and retried
             resp.raise_for_status()
+            server_logger.info(resp.__dict__)
             return await resp.json()
 
 
@@ -447,8 +449,6 @@ async def archive(guid):
             ))
 
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
-        print(done)
-        print(pending)
 
         bagit.make_bag(temp_dir)
         bag = bagit.Bag(temp_dir)

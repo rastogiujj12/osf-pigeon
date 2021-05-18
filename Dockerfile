@@ -1,24 +1,25 @@
-FROM python:3.7-alpine as base
+FROM python:3.6-slim-buster
 
-# Setup env
-ENV LANG C.UTF-8
-ENV LC_ALL C.UTF-8
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONFAULTHANDLER 1
+RUN mkdir -p /code
+WORKDIR /code
 
-# Install requirements
-COPY requirements.txt .
-RUN apk add --no-cache --virtual .build-deps \
+COPY requirements.txt /code/
+
+RUN apt-get update \
+    && apt-get install -y \
       python3-dev \
       gcc \
-      alpine-sdk \
       musl-dev \
       libxslt-dev \
       libxml2 \
-  && pip install -r requirements.txt \
-  && apk del .build-deps
+    && apt-get clean \
+    && apt-get autoremove -y
+
+RUN pip3 install --no-cache-dir -r /code/requirements.txt
 
 # Install application into container
-COPY . .
+COPY . /code/
+
+EXPOSE 2020
 
 ENTRYPOINT ["python", "-m", "osf_pigeon"]
