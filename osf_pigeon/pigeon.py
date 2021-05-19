@@ -48,16 +48,12 @@ async def get_and_write_json_to_temp(from_url, to_dir, name, parse_json=None):
 
 
 def create_zip_data(temp_dir):
-    zip_data = BytesIO()
-    zip_data.name = "bag.zip"
-    with zipfile.ZipFile(zip_data, "w") as fp:
+    with zipfile.ZipFile(os.path.join(temp_dir, 'bag.zip'), "w") as fp:
         for root, dirs, files in os.walk(temp_dir):
             for file in files:
                 file_path = os.path.join(root, file)
                 file_name = re.sub(f"^{temp_dir}", "", file_path)
                 fp.write(file_path, arcname=file_name)
-    zip_data.seek(0)
-    return zip_data
 
 
 async def get_relationship_attribute(key, url, func):
@@ -227,7 +223,6 @@ async def get_with_retry(url, retry_on=(), sleep_period=None, headers=None):
                     period_remaining=sleep_period
                     or int(resp.headers.get("Retry-After") or 0),
                 )  # This will be caught by @sleep_and_retry and retried
-            server_logger.info(resp.__dict__)
             resp.raise_for_status()
             return await resp.json()
 
@@ -370,13 +365,12 @@ def sync_metadata(guid, metadata):
     return ia_item, list(metadata.keys())
 
 
-async def upload(item_name, data, metadata):
+async def upload(item_name, temp_dir, metadata):
     ia_item = get_ia_item(item_name)
     ia_metadata = await get_metadata_for_ia_item(metadata)
     provider_id = metadata["data"]["embeds"]["provider"]["data"]["id"]
-
     ia_item.upload(
-        data,
+        os.path.join(temp_dir, 'bag.zip'),
         metadata={
             "collection": PROVIDER_ID_TEMPLATE.format(provider_id=provider_id),
             **ia_metadata,
@@ -454,8 +448,8 @@ async def archive(guid):
         bag = bagit.Bag(temp_dir)
         assert bag.is_valid()
 
-        zip_data = create_zip_data(temp_dir)
-        ia_item = await upload(REG_ID_TEMPLATE.format(guid=guid), zip_data, metadata)
+        create_zip_data(temp_dir)
+        ia_item = await upload(REG_ID_TEMPLATE.format(guid=guid), temp_dir, metadata)
 
         return ia_item, guid
 

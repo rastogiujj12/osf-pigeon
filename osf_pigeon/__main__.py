@@ -1,15 +1,19 @@
-import os
 import logging
-import argparse
 import requests
 from osf_pigeon import pigeon
 from concurrent.futures import ThreadPoolExecutor
 from osf_pigeon import settings
 from aiohttp import web
 
-from raven import Client
+import sentry_sdk
+from sentry_sdk.integrations.aiohttp import AioHttpIntegration
 
-pigeon_jobs = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pigeon_jobs")
+sentry_sdk.init(
+      dsn=settings.SENTRY_DSN,
+      integrations=[AioHttpIntegration()]
+)
+
+pigeon_jobs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pigeon_jobs")
 app = web.Application()
 routes = web.RouteTableDef()
 logging.basicConfig(filename="pigeon.log", level=logging.DEBUG)
@@ -19,9 +23,6 @@ def handle_exception(future):
     exception = future.exception()
     if exception:
         app.logger.exception(exception)
-        if settings.SENTRY_DSN:
-            sentry = Client(dsn=settings.SENTRY_DSN)
-            sentry.captureMessage(str(exception))
 
 
 def archive_task_done(future):
