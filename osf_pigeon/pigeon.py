@@ -227,8 +227,8 @@ async def get_with_retry(url, retry_on=(), sleep_period=None, headers=None):
                     period_remaining=sleep_period
                     or int(resp.headers.get("Retry-After") or 0),
                 )  # This will be caught by @sleep_and_retry and retried
-            resp.raise_for_status()
             server_logger.info(resp.__dict__)
+            resp.raise_for_status()
             return await resp.json()
 
 
