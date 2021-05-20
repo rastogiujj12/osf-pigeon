@@ -8,15 +8,13 @@ OSF_BEARER_TOKEN = os.environ.get("OSF_BEARER_TOKEN")
 IA_ACCESS_KEY = os.environ.get("IA_ACCESS_KEY")
 IA_SECRET_KEY = os.environ.get("IA_SECRET_KEY")
 
-OSF_API_URL = "http://localhost:8000/"
-OSF_FILES_URL = "http://localhost:7777/"
+OSF_API_URL = "http://192.168.168.167:8000/"
+OSF_FILES_URL = "http://192.168.168.167:7777/"
 DATACITE_PREFIX = "10.70102"
 DATACITE_URL = "https://mds.test.datacite.org/"
 DOI_FORMAT = "{prefix}/fk2osf.io/{guid}"
 OSF_COLLECTION_NAME = "cos-dev-sandbox"
-VERSION_ID = "local_v1"
-REG_ID_TEMPLATE = f"osf-registrations-{{guid}}-{VERSION_ID}"
-PROVIDER_ID_TEMPLATE = f"collection-osf-registration-providers-{{guid}}-{VERSION_ID}"
+ID_VERSION = "local_v1"
 
 HOST = "0.0.0.0"
 PORT = 2020

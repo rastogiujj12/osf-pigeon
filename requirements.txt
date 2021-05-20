@@ -3,4 +3,6 @@ datacite==1.0.1
 internetarchive==1.9.9
 ratelimit==2.2.1
 requests==2.25.1
-Sanic==20.12.2
+aiohttp==3.6.2
+sentry-sdk==0.14.4
+aiocontextvars

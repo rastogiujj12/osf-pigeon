@@ -1,66 +1,78 @@
-import os
-import argparse
+import logging
 import requests
-from sanic import Sanic
-from sanic.response import json
 from osf_pigeon import pigeon
 from concurrent.futures import ThreadPoolExecutor
-from sanic.log import logger
+from osf_pigeon import settings
+from aiohttp import web
+
+import sentry_sdk
+from sentry_sdk.integrations.aiohttp import AioHttpIntegration
+
+sentry_sdk.init(
+    dsn=settings.SENTRY_DSN,
+    release="0.0.10",
+    integrations=[AioHttpIntegration()],
+)
+
+pigeon_jobs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pigeon_jobs")
+app = web.Application()
+routes = web.RouteTableDef()
+logging.basicConfig(filename="pigeon.log", level=logging.DEBUG)
 
 
-app = Sanic("osf_pigeon")
-pigeon_jobs = ThreadPoolExecutor(max_workers=10, thread_name_prefix="pigeon_jobs")
+def handle_exception(future):
+    exception = future.exception()
+    if exception:
+        sentry_sdk.capture_exception(exception)
+        app.logger.exception(exception)
 
 
-def task_done(future):
-    if future.exception():
-        exception = future.exception()
-        exception = str(exception)
-        logger.debug(f"ERROR:{exception}")
-    if future.result():
-        guid, url = future.result()
+def archive_task_done(future):
+    if future._result and not future._exception:
+        ia_item, guid = future.result()
         resp = requests.post(
-            f"{settings.OSF_API_URL}_/ia/{guid}/done/", json={"IA_url": url}
+            f"{settings.OSF_API_URL}_/ia/{guid}/done/",
+            json={"ia_url": ia_item.urls.details},
         )
-        logger.debug(f"DONE:{future._result} Response:{resp}")
+        app.logger.info(f"{ia_item} called back with {resp}")
 
 
-@app.route("/")
+def metadata_task_done(future):
+    if future._result and not future._exception:
+        ia_item, updated_metadata = future.result()
+        app.logger.info(f"{ia_item} updated metadata {updated_metadata}")
+
+
+@routes.get("/")
 async def index(request):
-    return json({"🐦": "👍"})
+    return web.json_response({"🐦": "👍"})
 
 
-@app.route("/archive/<guid>", methods=["GET", "POST"])
-async def archive(request, guid):
+@routes.get("/logs")
+async def logs(request):
+    return web.FileResponse("pigeon.log")
+
+
+@routes.get("/archive/{guid}")
+@routes.post("/archive/{guid}")
+async def archive(request):
+    guid = request.match_info["guid"]
     future = pigeon_jobs.submit(pigeon.run, pigeon.archive(guid))
-    future.add_done_callback(task_done)
-    return json({guid: future._state})
+    future.add_done_callback(handle_exception)
+    future.add_done_callback(archive_task_done)
+    return web.json_response({guid: future._state})
 
 
-@app.route("/metadata/<guid>", methods=["POST"])
-async def set_metadata(request, guid):
-    item_name = pigeon.REG_ID_TEMPLATE.format(guid=guid)
-    future = pigeon_jobs.submit(pigeon.sync_metadata, item_name, request.json)
-    future.add_done_callback(task_done)
-    return json({guid: future._state})
-
-
-parser = argparse.ArgumentParser(
-    description="Set the environment to run OSF pigeon in."
-)
-parser.add_argument(
-    "--env", dest="env", help="what environment are you running this for"
-)
+@routes.post("/metadata/{guid}")
+async def set_metadata(request):
+    guid = request.match_info["guid"]
+    metadata = await request.json()
+    future = pigeon_jobs.submit(pigeon.sync_metadata, guid, metadata)
+    future.add_done_callback(handle_exception)
+    future.add_done_callback(metadata_task_done)
+    return web.json_response({guid: future._state})
 
 
 if __name__ == "__main__":
-    args = parser.parse_args()
-    if args.env:
-        os.environ["ENV"] = args.env
-
-    from osf_pigeon import settings
-
-    if args.env == "production":
-        app.run(host=settings.HOST, port=settings.PORT)
-    else:
-        app.run(host=settings.HOST, port=settings.PORT, auto_reload=True, debug=True)
+    app.add_routes(routes)
+    web.run_app(app, host=settings.HOST, port=settings.PORT)
