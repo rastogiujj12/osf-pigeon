@@ -9,8 +9,9 @@ import sentry_sdk
 from sentry_sdk.integrations.aiohttp import AioHttpIntegration
 
 sentry_sdk.init(
-      dsn=settings.SENTRY_DSN,
-      integrations=[AioHttpIntegration()]
+    dsn=settings.SENTRY_DSN,
+    release="0.0.10",
+    integrations=[AioHttpIntegration()],
 )
 
 pigeon_jobs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pigeon_jobs")
@@ -22,6 +23,7 @@ logging.basicConfig(filename="pigeon.log", level=logging.DEBUG)
 def handle_exception(future):
     exception = future.exception()
     if exception:
+        sentry_sdk.capture_exception(exception)
         app.logger.exception(exception)
 
 

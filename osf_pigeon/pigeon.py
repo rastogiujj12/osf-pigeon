@@ -1,45 +1,33 @@
-import re
-import json
 import os
-from io import BytesIO
-from datetime import datetime
-import internetarchive
-from asyncio import events
-
-import tempfile
+import re
 import math
-import sys
-
-from datacite import DataCiteMDSClient
-from datacite.errors import DataCiteNotFoundError
-import asyncio
-
-from osf_pigeon import settings
+import json
+import tempfile
 import zipfile
 import bagit
+import asyncio
+from datetime import datetime
+from asyncio import events
 from ratelimit import sleep_and_retry
 from ratelimit.exception import RateLimitException
-from aiohttp import http_exceptions
-from aiohttp.log import server_logger
+from aiohttp import ClientSession, http_exceptions
 
-REG_ID_TEMPLATE = f"osf-registrations-{{guid}}-{settings.ID_VERSION}"
-PROVIDER_ID_TEMPLATE = (
-    f"osf-registration-providers-{{provider_id}}-{settings.ID_VERSION}"
-)
-from aiohttp import ClientSession, ClientTimeout
+import internetarchive
+from datacite import DataCiteMDSClient
+from datacite.errors import DataCiteNotFoundError
+
+from osf_pigeon import settings
 
 
-async def get_raw_data(from_url, to_dir, name):
-    server_logger.info(f"downloading from {from_url} {sys.platform}")
-    async with ClientSession(timeout=ClientTimeout(total=600)) as session:
+async def stream_files_to_dir(from_url, to_dir, name):
+    async with ClientSession() as session:
         async with session.get(from_url) as resp:
             with open(os.path.join(to_dir, name), "wb") as fp:
                 async for chunk in resp.content.iter_any():
                     fp.write(chunk)
-    server_logger.info(f"download from {from_url} complete")
 
 
-async def get_and_write_json_to_temp(from_url, to_dir, name, parse_json=None):
+async def dump_json_to_dir(from_url, to_dir, name, parse_json=None):
     pages = await get_paginated_data(from_url, parse_json)
     with open(os.path.join(to_dir, name), "w") as fp:
         json.dump(pages, fp)
@@ -47,8 +35,8 @@ async def get_and_write_json_to_temp(from_url, to_dir, name, parse_json=None):
     return pages
 
 
-def create_zip_data(temp_dir):
-    with zipfile.ZipFile(os.path.join(temp_dir, 'bag.zip'), "w") as fp:
+def create_zip(temp_dir):
+    with zipfile.ZipFile(os.path.join(temp_dir, "bag.zip"), "w") as fp:
         for root, dirs, files in os.walk(temp_dir):
             for file in files:
                 file_path = os.path.join(root, file)
@@ -58,6 +46,7 @@ def create_zip_data(temp_dir):
 
 async def get_relationship_attribute(key, url, func):
     data = await get_paginated_data(url)
+    print(url, "data" in data)
     if "data" in data:
         return {key: list(map(func, data["data"]))}
     return {key: list(map(func, data))}
@@ -115,7 +104,7 @@ async def get_metadata_for_ia_item(json_metadata):
         get_relationship_attribute(
             "children",
             f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/children/',
-            lambda child: f'https://archive.org/details/{REG_ID_TEMPLATE.format(guid=child["id"])}',
+            lambda child: f'https://archive.org/details/{settings.REG_ID_TEMPLATE.format(guid=child["id"])}',
         ),
     ]
 
@@ -129,7 +118,7 @@ async def get_metadata_for_ia_item(json_metadata):
     if parent:
         relationship_data[
             "parent"
-        ] = f"https://archive.org/details/{REG_ID_TEMPLATE.format(guid=parent['id'])}"
+        ] = f"https://archive.org/details/{settings.REG_ID_TEMPLATE.format(guid=parent['id'])}"
 
     embeds = json_metadata["data"]["embeds"]
 
@@ -248,7 +237,7 @@ async def get_contributors(response):
             "related"
         ]["href"]
         data = await get_with_retry(institution_url)
-        institution_data = data['data']
+        institution_data = data["data"]
         institution_list = [
             institution["attributes"]["name"] for institution in institution_data
         ]
@@ -319,7 +308,9 @@ def sync_metadata(guid, metadata):
     """
 
     if not metadata:
-        return
+        raise http_exceptions.PayloadEncodingError(
+            "Metadata Payload not included in request"
+        )
 
     valid_updatable_metadata_keys = [
         "title",
@@ -342,7 +333,7 @@ def sync_metadata(guid, metadata):
             f" not included in valid keys: `{', '.join(valid_updatable_metadata_keys)}`.",
         )
 
-    item_name = REG_ID_TEMPLATE.format(guid=guid)
+    item_name = settings.REG_ID_TEMPLATE.format(guid=guid)
     ia_item = get_ia_item(item_name)
     if (
         not metadata.get("moderation_state") == "withdrawn"
@@ -370,9 +361,9 @@ async def upload(item_name, temp_dir, metadata):
     ia_metadata = await get_metadata_for_ia_item(metadata)
     provider_id = metadata["data"]["embeds"]["provider"]["data"]["id"]
     ia_item.upload(
-        os.path.join(temp_dir, 'bag.zip'),
+        os.path.join(temp_dir, "bag.zip"),
         metadata={
-            "collection": PROVIDER_ID_TEMPLATE.format(provider_id=provider_id),
+            "collection": settings.PROVIDER_ID_TEMPLATE.format(provider_id=provider_id),
             **ia_metadata,
         },
         access_key=settings.IA_ACCESS_KEY,
@@ -404,26 +395,26 @@ async def get_registration_metadata(guid, temp_dir, filename):
 
 async def archive(guid):
     with tempfile.TemporaryDirectory(
-        dir=settings.PIGEON_TEMP_DIR, prefix=REG_ID_TEMPLATE.format(guid=guid)
+        dir=settings.PIGEON_TEMP_DIR, prefix=settings.REG_ID_TEMPLATE.format(guid=guid)
     ) as temp_dir:
         # await first to check if withdrawn
         metadata = await get_registration_metadata(guid, temp_dir, "registration.json")
 
         tasks = [
             write_datacite_metadata(guid, temp_dir, metadata),
-            get_and_write_json_to_temp(
+            dump_json_to_dir(
                 from_url=f"{settings.OSF_API_URL}v2/registrations/{guid}/wikis/"
                 f"?page[size]=100",
                 to_dir=temp_dir,
                 name="wikis.json",
             ),
-            get_and_write_json_to_temp(
+            dump_json_to_dir(
                 from_url=f"{settings.OSF_API_URL}v2/registrations/{guid}/logs/"
                 f"?page[size]=100",
                 to_dir=temp_dir,
                 name="logs.json",
             ),
-            get_and_write_json_to_temp(
+            dump_json_to_dir(
                 from_url=f"{settings.OSF_API_URL}v2/registrations/{guid}/contributors/"
                 f"?page[size]=100",
                 to_dir=temp_dir,
@@ -436,20 +427,24 @@ async def archive(guid):
             "meta"
         ]["count"]
         if file_count:
-            tasks.append(get_raw_data(
-                from_url=f"{settings.OSF_FILES_URL}v1/resources/{guid}/providers/osfstorage/?zip=",
-                to_dir=temp_dir,
-                name="archived_files.zip"
-            ))
+            tasks.append(
+                stream_files_to_dir(
+                    from_url=f"{settings.OSF_FILES_URL}v1/resources/{guid}/providers/osfstorage/?zip=",
+                    to_dir=temp_dir,
+                    name="archived_files.zip",
+                )
+            )
 
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
 
         bagit.make_bag(temp_dir)
         bag = bagit.Bag(temp_dir)
         assert bag.is_valid()
 
-        create_zip_data(temp_dir)
-        ia_item = await upload(REG_ID_TEMPLATE.format(guid=guid), temp_dir, metadata)
+        create_zip(temp_dir)
+        ia_item = await upload(
+            settings.REG_ID_TEMPLATE.format(guid=guid), temp_dir, metadata
+        )
 
         return ia_item, guid
 
