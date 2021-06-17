@@ -1,17 +1,9 @@
-FROM python:3.7-alpine as base
-
+FROM python:3.6-slim-buster
 
 # Install requirements
 COPY requirements.txt .
-RUN apk add --no-cache --virtual .build-deps \
-      python3-dev \
-      gcc \
-      alpine-sdk \
-      musl-dev \
-      libxslt-dev \
-      libxml2 \
-  && pip install -r requirements.txt \
-  && apk del .build-deps
+
+RUN pip install -r requirements.txt
 
 # Install application into container
 COPY . .

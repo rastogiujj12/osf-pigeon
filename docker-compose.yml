@@ -1,8 +1,8 @@
 services:
-
   pigeon:
     build: .
     restart: unless-stopped
+    command: python3 -m osf_pigeon
     ports:
       - 2020:2020
     env_file:

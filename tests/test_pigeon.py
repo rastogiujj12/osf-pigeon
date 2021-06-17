@@ -1,30 +1,24 @@
 import os
-from io import BytesIO
 import json
 import pytest
-import mock
 from osf_pigeon import settings
-from asyncio import run
 
-import responses
 import tempfile
 from osf_pigeon.pigeon import (
-    get_and_write_file_data_to_temp,
-    get_and_write_json_to_temp,
-    create_zip_data,
-    format_metadata_for_ia_item,
-    get_contributors,
+    stream_files_to_dir,
+    dump_json_to_dir,
+    get_metadata_for_ia_item,
+    get_additional_contributor_info,
     sync_metadata,
     upload,
     write_datacite_metadata,
 )
-import zipfile
-from osf_pigeon.settings import ID_VERSION
+from aioresponses import aioresponses
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-class TestGetAndWriteFileDataToTemp:
+class TestStreamFilesToDir:
     @pytest.fixture
     def guid(self):
         return "guid0"
@@ -37,21 +31,25 @@ class TestGetAndWriteFileDataToTemp:
     def zip_data(self):
         return b"Brian Dawkins on game day"
 
-    def test_get_and_write_file_data_to_temp(
-        self, mock_waterbutler, guid, zip_name, zip_data
-    ):
+    async def test_stream_files_to_dir(self, guid, zip_name, zip_data):
         with tempfile.TemporaryDirectory() as temp_dir:
-            get_and_write_file_data_to_temp(
-                f"{settings.OSF_FILES_URL}v1/resources/{guid}/providers/osfstorage/?zip=",
-                temp_dir,
-                zip_name,
-            )
+            with aioresponses() as m:
+                m.get(
+                    f"{settings.OSF_FILES_URL}v1/resources/{guid}/providers/osfstorage/?zip=",
+                    body=zip_data,
+                )
+                await stream_files_to_dir(
+                    f"{settings.OSF_FILES_URL}v1/resources/{guid}/providers/osfstorage/?zip=",
+                    temp_dir,
+                    zip_name,
+                )
+
             assert len(os.listdir(temp_dir)) == 1
             assert os.listdir(temp_dir)[0] == zip_name
             assert open(os.path.join(temp_dir, zip_name), "rb").read() == zip_data
 
 
-class TestGetAndWriteJSONToTemp:
+class TestDumpJSONFilesToDir:
     @pytest.fixture
     def guid(self):
         return "guid0"
@@ -67,29 +65,20 @@ class TestGetAndWriteJSONToTemp:
         ) as fp:
             return fp.read()
 
-    def test_get_and_write_file_data_to_temp(
-        self, mock_osf_api, guid, json_data, file_name
-    ):
-        mock_osf_api.add(
-            responses.GET,
-            f"{settings.OSF_API_URL}v2/guids/{guid}",
-            status=200,
-            body=json_data,
-        )
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            run(
-                get_and_write_json_to_temp(
+    async def test_dump_json_to_dir(self, guid, json_data, file_name):
+        with aioresponses() as m:
+            m.get(f"{settings.OSF_API_URL}v2/guids/{guid}", body=json_data)
+            with tempfile.TemporaryDirectory() as temp_dir:
+                await dump_json_to_dir(
                     f"{settings.OSF_API_URL}v2/guids/{guid}", temp_dir, file_name
                 )
-            )
-            assert len(os.listdir(temp_dir)) == 1
-            assert os.listdir(temp_dir)[0] == file_name
-            info = json.loads(open(os.path.join(temp_dir, file_name)).read())
-            assert info == json.loads(json_data)
+                assert len(os.listdir(temp_dir)) == 1
+                assert os.listdir(temp_dir)[0] == file_name
+                info = json.loads(open(os.path.join(temp_dir, file_name)).read())
+                assert info == json.loads(json_data)
 
 
-class TestGetAndWriteJSONToTempMultipage:
+class TestDumpJSONFilesToDirMultipage:
     @pytest.fixture
     def guid(self):
         return "guid0"
@@ -119,35 +108,29 @@ class TestGetAndWriteJSONToTempMultipage:
 
         return page1["data"] + page2["data"]
 
-    def test_get_and_write_file_data_to_temp(
-        self, mock_osf_api, guid, page1, page2, file_name, expected_json
+    async def test_stream_files_to_dir(
+        self, guid, page1, page2, file_name, expected_json
     ):
-        mock_osf_api.add(
-            responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/{guid}/wikis/",
-            status=200,
-            body=page1,
-        )
-        mock_osf_api.add(
-            responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/{guid}/wikis/",
-            status=200,
-            body=page2,
-        )
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            run(
-                get_and_write_json_to_temp(
+        with aioresponses() as m:
+            m.get(
+                f"{settings.OSF_API_URL}v2/registrations/{guid}/wikis/",
+                body=page1,
+            )
+            m.get(
+                f"{settings.OSF_API_URL}v2/registrations/{guid}/wikis/?page=2&page=2",
+                body=page2,
+            )
+            with tempfile.TemporaryDirectory() as temp_dir:
+                await dump_json_to_dir(
                     f"{settings.OSF_API_URL}v2/registrations/{guid}/wikis/",
                     temp_dir,
                     file_name,
                 )
-            )
-            assert len(os.listdir(temp_dir)) == 1
-            assert os.listdir(temp_dir)[0] == file_name
-            info = json.loads(open(os.path.join(temp_dir, file_name)).read())
-            assert len(info) == 11
-            assert info == expected_json
+                assert len(os.listdir(temp_dir)) == 1
+                assert os.listdir(temp_dir)[0] == file_name
+                info = json.loads(open(os.path.join(temp_dir, file_name)).read())
+                assert len(info) == 11
+                assert info == expected_json
 
 
 class TestContributors:
@@ -169,40 +152,38 @@ class TestContributors:
         with open(os.path.join(HERE, "fixtures/ft3ae-institutions.json"), "r") as fp:
             return fp.read()
 
-    def test_get_and_write_file_data_to_temp(
-        self, mock_osf_api, guid, contributors_file, institutions_file, file_name
+    async def test_stream_files_to_dir_with_contribs(
+        self, guid, contributors_file, institutions_file, file_name
     ):
-        mock_osf_api.add(
-            responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/{guid}/contributors/",
-            status=200,
-            body=contributors_file,
-        )
-        mock_osf_api.add(
-            responses.GET,
-            "http://localhost:8000/v2/users/s3rbx/institutions/",
-            status=200,
-            body=institutions_file,
-        )
+        with aioresponses() as m:
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            run(
-                get_and_write_json_to_temp(
+            m.get(
+                f"{settings.OSF_API_URL}v2/registrations/{guid}/contributors/",
+                body=contributors_file,
+            )
+            m.get(
+                "http://localhost:8000/v2/users/s3rbx/institutions/",
+                body=institutions_file,
+            )
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                await dump_json_to_dir(
                     f"{settings.OSF_API_URL}v2/registrations/{guid}/contributors/",
                     temp_dir,
                     file_name,
-                    parse_json=get_contributors,
+                    parse_json=get_additional_contributor_info,
                 )
-            )
-            assert len(os.listdir(temp_dir)) == 1
-            assert os.listdir(temp_dir)[0] == file_name
-            info = json.loads(open(os.path.join(temp_dir, file_name)).read())["data"]
-            assert len(info) == 1
-            assert (
-                info[0]["embeds"]["users"]["data"]["attributes"]["social"]["orcid"]
-                == "0000-0001-4934-3444"
-            )
-            assert info[0]["affiliated_institutions"] == ["Center For Open Science"]
+                assert len(os.listdir(temp_dir)) == 1
+                assert os.listdir(temp_dir)[0] == file_name
+                info = json.loads(open(os.path.join(temp_dir, file_name)).read())[
+                    "data"
+                ]
+                assert len(info) == 1
+                assert (
+                    info[0]["embeds"]["users"]["data"]["attributes"]["social"]["orcid"]
+                    == "0000-0001-4934-3444"
+                )
+                assert info[0]["affiliated_institutions"] == ["Center For Open Science"]
 
 
 class TestDatacite:
@@ -222,43 +203,15 @@ class TestDatacite:
         with tempfile.TemporaryDirectory() as temp_dir:
             yield temp_dir
 
-    def test_get_datacite_metadata(self, guid, mock_datacite, temp_dir, metadata):
-        xml = run(write_datacite_metadata(guid, temp_dir, metadata))
+    async def test_get_datacite_metadata(self, guid, mock_datacite, temp_dir, metadata):
+        xml = await write_datacite_metadata(guid, temp_dir, metadata)
         assert xml == "pretend this is XML."
-
-
-class TestCreateZipData:
-    @pytest.fixture
-    def temp_dir(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            yield temp_dir
-
-    @pytest.fixture
-    def test_file(self, temp_dir):
-        with open(os.path.join(temp_dir, "test_file.txt"), "wb") as fp:
-            fp.write(b"partytime")
-
-    def test_create_zip_data(self, temp_dir, test_file):
-        zip_data = create_zip_data(temp_dir)
-        zip_file = zipfile.ZipFile(zip_data)
-
-        assert len(zip_file.infolist()) == 1
-        assert zip_file.infolist()[0].filename == "test_file.txt"
-        zip_file.extract("test_file.txt", temp_dir)  # just to read
-
-        assert (
-            open(os.path.join(temp_dir, "test_file.txt"), "rb").read() == b"partytime"
-        )
 
 
 class TestMetadata:
     @pytest.fixture
     def guid(self):
         return "guid0"
-
-    @pytest.fixture
-    def zip_data(self):
-        return BytesIO(b"Clyde Simmons is underrated")
 
     @pytest.fixture
     def temp_dir(self):
@@ -295,73 +248,81 @@ class TestMetadata:
             return fp.read()
 
     @pytest.fixture
+    def subjects_json(self):
+        with open(os.path.join(HERE, "fixtures/subjects.json"), "rb") as fp:
+            return fp.read()
+
+    @pytest.fixture
     def biblio_contribs(self):
         with open(os.path.join(HERE, "fixtures/biblio-contribs.json"), "rb") as fp:
             return fp.read()
 
-    def test_format_metadata_for_ia_item(
+    async def test_format_metadata_for_ia_item(
         self,
         metadata,
         registration_children_sparse,
-        mock_osf_api,
         institutions_json,
         biblio_contribs,
+        subjects_json,
     ):
-        mock_osf_api.add(
-            responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/pkdm6/children/"
-            f"?fields%5Bregistrations%5D=id",
-            body=registration_children_sparse,
-        )
-        mock_osf_api.add(
-            responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/8gqkv/contributors/"
-            f"?filter%5Bbibliographic%5D=True"
-            f"&fields%5Busers%5D=full_name",
-            body=biblio_contribs,
-        )
-        mock_osf_api.add(
-            responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/8gqkv/institutions/",
-            body=institutions_json,
-        )
-        mock_osf_api.add(
-            responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/pkdm6/children/?fields%5Bregistrations%5D=id",
-            body=registration_children_sparse,
-        )
-        metadata = run(format_metadata_for_ia_item(metadata))
-        assert metadata == {
-            "title": "Test Component",
-            "description": "Test Description",
-            "date_created": "2017-12-20",
-            "contributor": "Center for Open Science",
-            "category": "",
-            "license": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
-            "tags": [],
-            "contributors": ["John Tordoff"],
-            "article_doi": "",
-            "registration_doi": "10.70102/osf.io/guid0",
-            "children": [
-                f"https://archive.org/details/osf-registrations-hbs3p-{ID_VERSION}",
-                f"https://archive.org/details/osf-registrations-ec9db-{ID_VERSION}",
-            ],
-            "registry": "OSF Registries",
-            "registration_schema": "Open-Ended Registration",
-            "registered_from": "http://localhost:8000/v2/nodes/g752b/",
-            "affiliated_institutions": ["The Center For Open Science [Stage]"],
-            "parent": f"https://archive.org/details/osf-registrations-dgkjr-{ID_VERSION}",
-        }
+        with aioresponses() as m:
+            m.get(
+                f"{settings.OSF_API_URL}v2/registrations/pkdm6/children/"
+                f"?fields%5Bregistrations%5D=id",
+                body=registration_children_sparse,
+            )
+            m.get(
+                f"{settings.OSF_API_URL}v2/registrations/8gqkv/contributors/"
+                f"?filter%5Bbibliographic%5D=true",
+                body=biblio_contribs,
+            )
+            m.get(
+                f"{settings.OSF_API_URL}v2/registrations/8gqkv/institutions/",
+                body=institutions_json,
+            )
+            m.get(
+                f"{settings.OSF_API_URL}v2/registrations/8gqkv/subjects/",
+                body=subjects_json,
+            )
+            m.get(
+                f"{settings.OSF_API_URL}v2/registrations/8gqkv/children/",
+                body=registration_children_sparse,
+            )
+            metadata = await get_metadata_for_ia_item(metadata)
+            assert metadata == {
+                "title": "Test Component",
+                "description": "Test Description",
+                "date": "2017-12-20",
+                "publisher": "Center for Open Science",
+                "osf_category": "",
+                "license": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
+                "osf_tags": [],
+                "creator": ["John Tordoff"],
+                "osf_subjects": ["Life Sciences"],
+                "article_doi": "",
+                "osf_registration_doi": "10.70102/osf.io/guid0",
+                "children": [
+                    f"https://archive.org/details/osf-registrations-hu68d-{settings.ID_VERSION}",
+                    f"https://archive.org/details/osf-registrations-puxmb-{settings.ID_VERSION}",
+                ],
+                "osf_registry": "OSF Registries",
+                "osf_registration_schema": "Open-Ended Registration",
+                "source": "http://localhost:5000/g752b",
+                "affiliated_institutions": ["The Center For Open Science [Stage]"],
+                "parent": f"https://archive.org/details/osf-registrations-dgkjr-"
+                f"{settings.ID_VERSION}",
+            }
 
     def test_modify_metadata_only(self, mock_ia_client, guid):
         metadata = {
             "title": "Test Component",
             "description": "Test Description",
             "date": "2017-12-20",
-            "contributor": "Center for Open Science",
         }
         sync_metadata(guid, metadata)
-        mock_ia_client.session.get_item.assert_called_with("guid0")
+        mock_ia_client.session.get_item.assert_called_with(
+            f"osf-registrations-guid0-{settings.ID_VERSION}"
+        )
         mock_ia_client.item.modify_metadata.assert_called_with(metadata)
 
     def test_modify_metadata_not_public(self, mock_ia_client, guid):
@@ -369,28 +330,26 @@ class TestMetadata:
             "title": "Test Component",
             "description": "Test Description",
             "date": "2017-12-20",
-            "contributor": "Center for Open Science",
-            "is_public": False,
             "moderation_state": "withdrawn",
         }
-        sync_metadata(guid, metadata.copy())
-        mock_ia_client.session.get_item.assert_called_with("guid0")
+        sync_metadata(guid, metadata)
+        mock_ia_client.session.get_item.assert_called_with(
+            f"osf-registrations-guid0-{settings.ID_VERSION}"
+        )
 
         metadata["noindex"] = True
         metadata[
             "description"
         ] = "Note this registration has been withdrawn: \nTest Description"
-        mock_ia_client.item.modify_metadata.assert_called_with(metadata)
+
+        mock_ia_client.item.modify_metadata.assert_any_call({"noindex": True})
+        mock_ia_client.item.modify_metadata.assert_any_call(metadata)
 
 
 class TestUpload:
     @pytest.fixture
     def guid(self):
         return "guid0"
-
-    @pytest.fixture
-    def zip_data(self):
-        return BytesIO(b"Clyde Simmons is underrated")
 
     @pytest.fixture
     def metadata(self):
@@ -421,138 +380,146 @@ class TestUpload:
         with open(os.path.join(HERE, "fixtures/biblio-contribs.json"), "rb") as fp:
             return fp.read()
 
-    def test_upload(
+    @pytest.fixture
+    def subjects_json(self):
+        with open(os.path.join(HERE, "fixtures/subjects.json"), "rb") as fp:
+            return fp.read()
+
+    async def test_upload(
         self,
         mock_ia_client,
-        mock_osf_api,
         guid,
-        zip_data,
         registration_children_sparse,
         biblio_contribs,
         metadata,
         institutions_json,
+        subjects_json,
+        temp_dir,
     ):
-        mock_osf_api.add(
-            responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/8gqkv/children/"
-            f"?fields%5Bregistrations%5D=id",
-            body=registration_children_sparse,
-        )
-        mock_osf_api.add(
-            responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/8gqkv/contributors/"
-            f"?filter%5Bbibliographic%5D=True"
-            f"&fields%5Busers%5D=full_name",
-            body=biblio_contribs,
-        )
-        mock_osf_api.add(
-            responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/8gqkv/institutions/",
-            body=institutions_json,
-        )
-        run(
-            upload(
+        with aioresponses() as m:
+            m.add(
+                f"{settings.OSF_API_URL}v2/registrations/8gqkv/children/",
+                body=registration_children_sparse,
+            )
+            m.add(
+                f"{settings.OSF_API_URL}v2/registrations/8gqkv/contributors/"
+                f"?filter%5Bbibliographic%5D=true",
+                body=biblio_contribs,
+            )
+            m.add(
+                f"{settings.OSF_API_URL}v2/registrations/8gqkv/institutions/",
+                body=institutions_json,
+            )
+            m.add(
+                f"{settings.OSF_API_URL}v2/registrations/8gqkv/subjects/",
+                body=subjects_json,
+            )
+            await upload(
                 guid,
-                zip_data,
+                temp_dir,
                 metadata,
             )
-        )
 
-        mock_ia_client.session.get_item.assert_called_with("guid0")
-        mock_ia_client.item.upload.assert_called_with(
-            mock.ANY,
-            metadata={
-                "collection": f"collection-osf-registration-providers-osf-{ID_VERSION}",
-                "title": "Test Component",
-                "description": "Test Description",
-                "date_created": "2017-12-20",
-                "contributor": "Center for Open Science",
-                "category": "",
-                "license": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
-                "tags": [],
-                "contributors": ["John Tordoff"],
-                "article_doi": "",
-                "registration_doi": "10.70102/osf.io/guid0",
-                "children": [
-                    f"https://archive.org/details/osf-registrations-hbs3p-{ID_VERSION}",
-                    f"https://archive.org/details/osf-registrations-ec9db-{ID_VERSION}",
-                ],
-                "registry": "OSF Registries",
-                "registration_schema": "Open-Ended Registration",
-                "registered_from": "http://localhost:8000/v2/nodes/g752b/",
-                "affiliated_institutions": ["The Center For Open Science [Stage]"],
-                "parent": "https://archive.org/details/osf-registrations-dgkjr-local_v1",
-            },
-            secret_key=settings.IA_SECRET_KEY,
-            access_key=settings.IA_ACCESS_KEY,
-        )
+            mock_ia_client.session.get_item.assert_called_with("guid0")
+            mock_ia_client.item.upload.assert_called_with(
+                f"{temp_dir}/bag.zip",
+                metadata={
+                    "collection": f"osf-registration-providers-osf-{settings.ID_VERSION}",
+                    "publisher": "Center for Open Science",
+                    "osf_registration_doi": "10.70102/osf.io/guid0",
+                    "title": "Test Component",
+                    "description": "Test Description",
+                    "osf_category": "",
+                    "osf_tags": [],
+                    "date": "2017-12-20",
+                    "article_doi": "",
+                    "osf_registry": "OSF Registries",
+                    "osf_registration_schema": "Open-Ended Registration",
+                    "source": "http://localhost:5000/g752b",
+                    "creator": ["John Tordoff"],
+                    "affiliated_institutions": ["The Center For Open Science [Stage]"],
+                    "osf_subjects": ["Life Sciences"],
+                    "children": [
+                        f"https://archive.org/details/"
+                        f"osf-registrations-hu68d-{settings.ID_VERSION}",
+                        f"https://archive.org/details/"
+                        f"osf-registrations-puxmb-{settings.ID_VERSION}",
+                    ],
+                    "parent": f"https://archive.org/details/"
+                    f"osf-registrations-dgkjr-{settings.ID_VERSION}",
+                    "license": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
+                },
+                secret_key=settings.IA_SECRET_KEY,
+                access_key=settings.IA_ACCESS_KEY,
+            )
 
-    def test_upload_with_different_provider(
+    async def test_upload_with_different_provider(
         self,
         mock_ia_client,
-        mock_osf_api,
         guid,
-        zip_data,
         registration_children_sparse,
         biblio_contribs,
         metadata,
+        temp_dir,
         institutions_json,
+        subjects_json,
     ):
         """
         Different providers should get uploaded to different collections
         """
         metadata["data"]["embeds"]["provider"]["data"]["id"] = "burds"
-
-        mock_osf_api.add(
-            responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/8gqkv/children/"
-            f"?fields%5Bregistrations%5D=id",
-            body=registration_children_sparse,
-        )
-        mock_osf_api.add(
-            responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/8gqkv/contributors/"
-            f"?filter%5Bbibliographic%5D=True"
-            f"&fields%5Busers%5D=full_name",
-            body=biblio_contribs,
-        )
-        mock_osf_api.add(
-            responses.GET,
-            f"{settings.OSF_API_URL}v2/registrations/8gqkv/institutions/",
-            body=institutions_json,
-        )
-        run(
-            upload(
+        with aioresponses() as m:
+            m.get(
+                f"{settings.OSF_API_URL}v2/registrations/8gqkv/children/",
+                body=registration_children_sparse,
+            )
+            m.get(
+                f"{settings.OSF_API_URL}v2/registrations/8gqkv/contributors/"
+                f"?filter%5Bbibliographic%5D=true",
+                body=biblio_contribs,
+            )
+            m.get(
+                f"{settings.OSF_API_URL}v2/registrations/8gqkv/institutions/",
+                body=institutions_json,
+            )
+            m.get(
+                f"{settings.OSF_API_URL}v2/registrations/8gqkv/subjects/",
+                body=subjects_json,
+            )
+            await upload(
                 guid,
-                zip_data,
+                temp_dir,
                 metadata,
             )
-        )
-        mock_ia_client.session.get_item.assert_called_with("guid0")
-        mock_ia_client.item.upload.assert_called_with(
-            mock.ANY,
-            metadata={
-                "collection": f"collection-osf-registration-providers-burds-{ID_VERSION}",
-                "title": "Test Component",
-                "description": "Test Description",
-                "date_created": "2017-12-20",
-                "contributor": "Center for Open Science",
-                "category": "",
-                "license": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
-                "tags": [],
-                "contributors": ["John Tordoff"],
-                "article_doi": "",
-                "registration_doi": "10.70102/osf.io/guid0",
-                "children": [
-                    f"https://archive.org/details/osf-registrations-hbs3p-{ID_VERSION}",
-                    f"https://archive.org/details/osf-registrations-ec9db-{ID_VERSION}",
-                ],
-                "registry": "OSF Registries",
-                "registration_schema": "Open-Ended Registration",
-                "registered_from": "http://localhost:8000/v2/nodes/g752b/",
-                "affiliated_institutions": ["The Center For Open Science [Stage]"],
-                "parent": "https://archive.org/details/osf-registrations-dgkjr-local_v1",
-            },
-            secret_key=settings.IA_SECRET_KEY,
-            access_key=settings.IA_ACCESS_KEY,
-        )
+            mock_ia_client.session.get_item.assert_called_with("guid0")
+            mock_ia_client.item.upload.assert_called_with(
+                f"{temp_dir}/bag.zip",
+                metadata={
+                    "collection": f"osf-registration-providers-burds-{settings.ID_VERSION}",
+                    "publisher": "Center for Open Science",
+                    "osf_registration_doi": "10.70102/osf.io/guid0",
+                    "title": "Test Component",
+                    "description": "Test Description",
+                    "osf_category": "",
+                    "osf_tags": [],
+                    "date": "2017-12-20",
+                    "article_doi": "",
+                    "osf_registry": "OSF Registries",
+                    "osf_registration_schema": "Open-Ended Registration",
+                    "source": "http://localhost:5000/g752b",
+                    "creator": ["John Tordoff"],
+                    "affiliated_institutions": ["The Center For Open Science [Stage]"],
+                    "osf_subjects": ["Life Sciences"],
+                    "children": [
+                        f"https://archive.org/details/"
+                        f"osf-registrations-hu68d-{settings.ID_VERSION}",
+                        f"https://archive.org/details/"
+                        f"osf-registrations-puxmb-{settings.ID_VERSION}",
+                    ],
+                    "parent": f"https://archive.org/details/"
+                    f"osf-registrations-dgkjr-{settings.ID_VERSION}",
+                    "license": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
+                },
+                secret_key=settings.IA_SECRET_KEY,
+                access_key=settings.IA_ACCESS_KEY,
+            )

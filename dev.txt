@@ -1,7 +1,9 @@
 -r requirements.txt
 
 pytest==5.4.3
+pytest-aiohttp
 mock==4.0.2
 responses==0.10.15
 pytest-socket==0.3.5
 flake8==3.8.3
+aioresponses
