@@ -37,7 +37,7 @@ async def dump_json_to_dir(from_url, to_dir, name, parse_json=None):
 
 def create_zip(temp_dir):
     with zipfile.ZipFile(os.path.join(temp_dir, "bag.zip"), "w") as fp:
-        for root, dirs, files in os.walk(temp_dir):
+        for root, dirs, files in os.walk(os.path.join(temp_dir, "bag")):
             for file in files:
                 file_path = os.path.join(root, file)
                 file_name = re.sub(f"^{temp_dir}", "", file_path)
@@ -46,7 +46,6 @@ def create_zip(temp_dir):
 
 async def get_relationship_attribute(key, url, func):
     data = await get_paginated_data(url)
-    print(url, "data" in data)
     if "data" in data:
         return {key: list(map(func, data["data"]))}
     return {key: list(map(func, data))}
@@ -59,9 +58,9 @@ async def get_metadata_for_ia_item(json_metadata):
     :param json_metadata: metadata from OSF registration view contains attributes and relationship
     urls.
 
-    Note: Internet Archive advises that all metadata that points to internal OSF features should have a specific `osf_`
-    prefix. Example: `registry` should be `osf_registry`, however metadata such as affiliated_institutions is
-    self-explanatory and doesn't need a prefix.
+    Note: Internet Archive advises that all metadata that points to internal OSF features should
+    have a specific `osf_` prefix. Example: `registry` should be `osf_registry`, however metadata
+    such as affiliated_institutions is self-explanatory and doesn't need a prefix.
 
     :return: ia_metadata the metadata for an IA bucket. Should include the following if they are
      not null:
@@ -86,7 +85,8 @@ async def get_metadata_for_ia_item(json_metadata):
     relationship_data = [
         get_relationship_attribute(
             "creator",
-            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/contributors/?filter[bibliographic]=true&',
+            f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/contributors/'
+            f"?filter[bibliographic]=true&",
             lambda contrib: contrib["embeds"]["users"]["data"]["attributes"][
                 "full_name"
             ],
@@ -104,7 +104,8 @@ async def get_metadata_for_ia_item(json_metadata):
         get_relationship_attribute(
             "children",
             f'{settings.OSF_API_URL}v2/registrations/{json_metadata["data"]["id"]}/children/',
-            lambda child: f'https://archive.org/details/{settings.REG_ID_TEMPLATE.format(guid=child["id"])}',
+            lambda child: f"https://archive.org/details/"
+            f'{settings.REG_ID_TEMPLATE.format(guid=child["id"])}',
         ),
     ]
 
@@ -122,7 +123,9 @@ async def get_metadata_for_ia_item(json_metadata):
 
     embeds = json_metadata["data"]["embeds"]
 
-    if not embeds["license"].get("errors"):  # Fix me
+    if not embeds["license"].get(
+        "errors"
+    ):  # The reported error here is just a 404, so ignore if no license
         relationship_data["license"] = embeds["license"]["data"]["attributes"]["url"]
 
     doi = next(
@@ -162,7 +165,6 @@ async def get_metadata_for_ia_item(json_metadata):
 
 
 async def write_datacite_metadata(guid, temp_dir, metadata):
-
     try:
         doi = next(
             (
@@ -175,14 +177,12 @@ async def write_datacite_metadata(guid, temp_dir, metadata):
         raise DataCiteNotFoundError(
             f"Datacite DOI not found for registration {guid} on OSF server."
         )
-
     client = DataCiteMDSClient(
         url=settings.DATACITE_URL,
         username=settings.DATACITE_USERNAME,
         password=settings.DATACITE_PASSWORD,
         prefix=settings.DATACITE_PREFIX,
     )
-
     try:
         xml_metadata = client.metadata_get(doi)
     except DataCiteNotFoundError:
@@ -228,7 +228,7 @@ async def get_pages(url, page, result={}, parse_json=None):
     return result
 
 
-async def get_contributors(response):
+async def get_additional_contributor_info(response):
     contributor_data_list = []
     for contributor in response["data"]:
         contributor_data = {}
@@ -289,7 +289,7 @@ def get_ia_item(guid):
 
 def sync_metadata(guid, metadata):
     """
-    This is used to sync the metadata of archive.org items with OSF Registrations. The OSF metadata actively being
+    This is used to sync the metadata of archive.org items with OSF Registrations.
     synced is as follows:
         - title
         - description
@@ -301,7 +301,8 @@ def sync_metadata(guid, metadata):
         - license
         - article_doi
 
-    `moderation_state` is an allowable key, but only to determine a withdrawal status of a registration.
+    `moderation_state` is an allowable key, but only to determine a withdrawal status of a
+     registration.
     :param guid:
     :param metadata:
     :return:
@@ -320,7 +321,7 @@ def sync_metadata(guid, metadata):
         "osf_category",
         "osf_subjects",
         "osf_tags",
-        "osf_article_doi",
+        "article_doi",
         "affiliated_institutions",
         "license",
         "moderation_state",
@@ -405,21 +406,21 @@ async def archive(guid):
             dump_json_to_dir(
                 from_url=f"{settings.OSF_API_URL}v2/registrations/{guid}/wikis/"
                 f"?page[size]=100",
-                to_dir=temp_dir,
+                to_dir=os.path.join(temp_dir, "bag"),
                 name="wikis.json",
             ),
             dump_json_to_dir(
                 from_url=f"{settings.OSF_API_URL}v2/registrations/{guid}/logs/"
                 f"?page[size]=100",
-                to_dir=temp_dir,
+                to_dir=os.path.join(temp_dir, "bag"),
                 name="logs.json",
             ),
             dump_json_to_dir(
                 from_url=f"{settings.OSF_API_URL}v2/registrations/{guid}/contributors/"
                 f"?page[size]=100",
-                to_dir=temp_dir,
+                to_dir=os.path.join(temp_dir, "bag"),
                 name="contributors.json",
-                parse_json=get_contributors,
+                parse_json=get_additional_contributor_info,
             ),
         ]
         # only download archived data if there are files
@@ -429,16 +430,16 @@ async def archive(guid):
         if file_count:
             tasks.append(
                 stream_files_to_dir(
-                    from_url=f"{settings.OSF_FILES_URL}v1/resources/{guid}/providers/osfstorage/?zip=",
-                    to_dir=temp_dir,
-                    name="archived_files.zip",
+                    f"{settings.OSF_FILES_URL}v1/resources/{guid}/providers/osfstorage/?zip=",
+                    os.path.join(temp_dir, "bag"),
+                    "archived_files.zip",
                 )
             )
 
-        await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+        await asyncio.gather(*tasks)
 
-        bagit.make_bag(temp_dir)
-        bag = bagit.Bag(temp_dir)
+        bagit.make_bag(os.path.join(temp_dir, "bag"))
+        bag = bagit.Bag(os.path.join(temp_dir, "bag"))
         assert bag.is_valid()
 
         create_zip(temp_dir)

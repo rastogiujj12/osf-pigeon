@@ -5,26 +5,7 @@ from osf_pigeon import settings
 
 
 @pytest.fixture
-def mock_waterbutler(guid, zip_data):
-    with responses.RequestsMock(assert_all_requests_are_fired=True) as rsps:
-        rsps.add(
-            responses.GET,
-            f"{settings.OSF_FILES_URL}v1/resources/{guid}/providers/osfstorage/?zip=",
-            status=200,
-            body=zip_data,
-        )
-        yield rsps
-
-
-@pytest.fixture
-def mock_osf_api():
-    with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
-        yield rsps
-
-
-@pytest.fixture
 def mock_datacite(guid):
-
     with mock.patch.object(settings, "DOI_FORMAT", "{prefix}/osf.io/{guid}"):
         doi = settings.DOI_FORMAT.format(prefix=settings.DATACITE_PREFIX, guid=guid)
 

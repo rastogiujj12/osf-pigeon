@@ -1,6 +1,10 @@
+import sys
 import warnings
-from osf_pigeon.settings.defaults import *  # noqa
 
+if "pytest" in sys.modules:
+    from osf_pigeon.settings.test import *  # noqa
+else:
+    from osf_pigeon.settings.defaults import *  # noqa
 
 try:
     from osf_pigeon.settings.local import *  # noqa
